@@ -68,6 +68,9 @@ class Batch(TimestampMixin, db.Model):
     start_date = db.Column(db.Date)
     end_date = db.Column(db.Date)
     status = db.Column(db.String(20), default="active", nullable=False)  # active | closed
+    # Set by the domain lead: the window projects in this batch run in (allocation defaults to it)
+    project_start_date = db.Column(db.Date)
+    project_end_date = db.Column(db.Date)
 
     ou = db.relationship("OrganisationalUnit", back_populates="batches")
     domain = db.relationship("Domain", back_populates="batches")
@@ -109,6 +112,13 @@ class Mentor(TimestampMixin, db.Model):
     domain_id = db.Column(db.Integer, db.ForeignKey("domains.id", ondelete="SET NULL"), index=True)
     designation = db.Column(db.String(120))
     expertise = db.Column(db.String(255))
+    mentor_type = db.Column(db.String(20), default="internal", server_default="internal", nullable=False)  # internal | industry
+    # Industry-mentor details (internal mentors are ICT trainers and leave these empty)
+    company = db.Column(db.String(150))
+    industry_sector = db.Column(db.String(120))
+    experience_years = db.Column(db.Integer)
+    linkedin_url = db.Column(db.String(255))
+    bio = db.Column(db.Text)  # professional profile
 
     user = db.relationship("User")
     domain = db.relationship("Domain")

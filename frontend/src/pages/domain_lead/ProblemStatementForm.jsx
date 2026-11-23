@@ -16,7 +16,7 @@ const RICH = [
   ['suggested_technologies', 'Suggested technologies'], ['dataset_info', 'Dataset information'], ['required_skills', 'Required skills'],
 ]
 const EMPTY = {
-  ps_code: '', title: '', domain_id: '', difficulty: 'medium', estimated_duration: '', status: 'active',
+  ps_code: '', title: '', domain_id: '', source_type: 'internal', industry: '', difficulty: 'medium', estimated_duration: '', status: 'active',
   ...Object.fromEntries(RICH.map(([k]) => [k, ''])),
 }
 
@@ -26,6 +26,7 @@ export default function ProblemStatementForm() {
   const base = useBasePath()
   const navigate = useNavigate()
   const [domains, setDomains] = useState([])
+  const [industries, setIndustries] = useState([])
   const [form, setForm] = useState(EMPTY)
   const [files, setFiles] = useState({ datasets: [], documents: [] })
   const [loading, setLoading] = useState(true)
@@ -46,6 +47,7 @@ export default function ProblemStatementForm() {
     (async () => {
       try {
         setDomains(await domainService.list({ active: 1 }))
+        psService.industries().then(setIndustries).catch(() => {})
         if (editing) await load()
       } catch (e) { setError(errorMessage(e)) } finally { setLoading(false) }
     })()
@@ -56,7 +58,8 @@ export default function ProblemStatementForm() {
 
   const submit = async (e) => {
     e.preventDefault(); setBusy(true); setError(''); setErrs({}); setSaved(false)
-    const body = { ...form, domain_id: Number(form.domain_id), estimated_duration: form.estimated_duration || null }
+    const body = { ...form, domain_id: Number(form.domain_id), estimated_duration: form.estimated_duration || null,
+      industry: form.source_type === 'industry' ? form.industry : null }
     try {
       if (editing) { await psService.update(id, body); setSaved(true) }
       else {
@@ -86,6 +89,15 @@ export default function ProblemStatementForm() {
             <select id="domain" className="input" required value={form.domain_id} onChange={set('domain_id')}>
               <option value="">Select domain…</option>{domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>{err('domain')}</div>
+          <div><label htmlFor="source_type" className="label">Statement type *</label>
+            <select id="source_type" className="input" value={form.source_type} onChange={set('source_type')}>
+              <option value="internal">Internal statement</option><option value="industry">Industry statement</option>
+            </select>{err('source_type')}</div>
+          {form.source_type === 'industry' && (
+            <div><label htmlFor="industry" className="label">Industry *</label>
+              <input id="industry" className="input" required list="industry-options" placeholder="e.g. Healthcare, Finance" value={form.industry} onChange={set('industry')} />
+              <datalist id="industry-options">{industries.map((i) => <option key={i} value={i} />)}</datalist>{err('industry')}</div>
+          )}
           <div><label htmlFor="difficulty" className="label">Difficulty level</label>
             <select id="difficulty" className="input" value={form.difficulty} onChange={set('difficulty')}>
               <option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option>

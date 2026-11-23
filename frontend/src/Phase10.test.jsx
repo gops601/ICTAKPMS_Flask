@@ -10,7 +10,7 @@ import BatchDetail from './pages/common/BatchDetail'
 import BatchList from './pages/admin/BatchList'
 import AuthLayout from './layouts/AuthLayout'
 import WelcomeBanner from './components/WelcomeBanner'
-import { EmptyState, HeroIllustration, LogoMark } from './components/illustrations'
+import { AiNetworkHero, EmptyState, HeroIllustration, LogoMark } from './components/illustrations'
 import * as svc from './services/adminService'
 
 let mockUser = { id: 4, name: 'Mia Mentor', role: 'mentor' }
@@ -251,15 +251,15 @@ describe('batch detailed report downloads', () => {
 describe('branding and illustrations', () => {
   it('sign-in page shows the illustration, the feature list and the ICTAKPMS name', () => {
     render(<AuthLayout title="Sign in"><p>form</p></AuthLayout>)
-    expect(screen.getByRole('img', { name: /illustration of a project dashboard/i })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /illustration of an AI neural network/i })).toBeInTheDocument()
     expect(screen.getAllByRole('img', { name: 'ICTAKPMS logo' }).length).toBeGreaterThan(0)
     expect(screen.getByText(/srs submission, review and approval/i)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
   })
 
   it('the illustration components render accessible, self-contained SVGs', () => {
-    const { container } = render(<><LogoMark /><HeroIllustration /><EmptyState title="Nothing yet">Add something to get started.</EmptyState></>)
-    expect(container.querySelectorAll('svg').length).toBe(3)
+    const { container } = render(<><LogoMark /><HeroIllustration /><AiNetworkHero /><EmptyState title="Nothing yet">Add something to get started.</EmptyState></>)
+    expect(container.querySelectorAll("svg").length).toBe(5) // logo, 2 heroes, empty-state art, AI spark
     expect(container.querySelector('img')).toBeNull()                            // no external image requests
     expect(screen.getByText('Nothing yet')).toBeInTheDocument()
     expect(screen.getByText('Add something to get started.')).toBeInTheDocument()

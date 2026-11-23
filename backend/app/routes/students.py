@@ -87,9 +87,11 @@ def list_mentors():
         q = q.where(db.or_(Mentor.domain_id.in_(lead_domain_ids(user) or {-1}), Mentor.domain_id.is_(None)))
     if a.get("domain_id", type=int):
         q = q.where(Mentor.domain_id == a.get("domain_id", type=int))
+    if a.get("mentor_type") in ("internal", "industry"):
+        q = q.where(Mentor.mentor_type == a["mentor_type"])
     if a.get("q"):
         like = f"%{a['q']}%"
-        q = q.where(db.or_(User.name.like(like), User.email.like(like)))
+        q = q.where(db.or_(User.name.like(like), User.email.like(like), Mentor.company.like(like)))
     q = q.order_by(User.name)
     page = db.paginate(q, page=a.get("page", 1, type=int),
                        per_page=min(a.get("per_page", 20, type=int), 100), error_out=False)

@@ -51,6 +51,10 @@ def list_problem_statements():
         q = q.where(ProblemStatement.difficulty == a["difficulty"])
     if a.get("status") in problem_service.STATUSES:
         q = q.where(ProblemStatement.status == a["status"])
+    if a.get("source_type") in problem_service.SOURCE_TYPES:
+        q = q.where(ProblemStatement.source_type == a["source_type"])
+    if a.get("industry"):
+        q = q.where(db.func.lower(ProblemStatement.industry) == a["industry"].strip().lower())
     if a.get("q"):
         like = f"%{a['q']}%"
         q = q.where(db.or_(ProblemStatement.title.like(like), ProblemStatement.ps_code.like(like)))
@@ -61,6 +65,17 @@ def list_problem_statements():
                        per_page=min(a.get("per_page", 20, type=int), 100), error_out=False)
     return ok([ps_to_dict(p) for p in page.items],
               meta={"page": page.page, "per_page": page.per_page, "total": page.total, "pages": page.pages})
+
+
+@bp.get("/industries")
+@bp.doc(security=SEC, description="Distinct industries used by industry problem statements (for filters).")
+@roles_required(*MANAGERS)
+def list_industries():
+    user = current_user()
+    q = db.select(ProblemStatement.industry).where(ProblemStatement.industry.is_not(None))
+    if user.role_name == "domain_lead":
+        q = q.where(ProblemStatement.domain_id.in_(lead_domain_ids(user) or {-1}))
+    return ok(sorted(set(db.session.scalars(q.distinct())), key=str.lower))
 
 
 @bp.post("")

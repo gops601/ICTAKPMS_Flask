@@ -230,6 +230,7 @@ PS_COLUMNS = [
     ("Suggested Technologies", "suggested_technologies", False), ("Dataset Information", "dataset_info", False),
     ("Difficulty Level", "difficulty", False), ("Duration", "estimated_duration", False),
     ("Required Skills", "required_skills", False), ("Status", "status", False),
+    ("Statement Type", "source_type", False), ("Industry", "industry", False),
 ]
 
 

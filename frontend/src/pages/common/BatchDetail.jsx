@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Download, Plus, Repeat, Trash2, UserPlus } from 'lucide-react'
+import { CalendarDays, Download, Plus, Repeat, Trash2, UserPlus } from 'lucide-react'
 import { batchMentorService, batchService, projectService, reportService, studentService, userService } from '../../services/adminService'
-import { errorMessage } from '../../services/api'
+import { errorMessage, fieldErrors } from '../../services/api'
 import { useAuth } from '../../context/AuthContext'
 import useBasePath from '../../hooks/useBasePath'
 import PageHeader from '../../components/PageHeader'
@@ -87,6 +87,53 @@ function MentorsTab({ batch, canManage }) {
   )
 }
 
+/** The domain lead (or admin) sets when projects in this batch start and end; allocation defaults to it. */
+function ProjectDatesCard({ batch, canManage, onSaved }) {
+  const [editing, setEditing] = useState(false)
+  const [form, setForm] = useState({ start: batch.project_start_date || '', end: batch.project_end_date || '' })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [errs, setErrs] = useState({})
+  const isSet = batch.project_start_date && batch.project_end_date
+
+  const save = async (e) => {
+    e.preventDefault(); setBusy(true); setError(''); setErrs({})
+    try { onSaved(await batchService.setProjectDates(batch.id, form.start, form.end)); setEditing(false) }
+    catch (err) { setError(errorMessage(err)); setErrs(fieldErrors(err)) } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="card">
+      {!isSet && canManage && <div className="mb-3"><Alert type="warning">Project start and end dates have not been set for this batch yet. Please set them before allocating projects.</Alert></div>}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3 text-sm">
+          <CalendarDays className="h-5 w-5 text-slate-400" aria-hidden />
+          <div><div className="text-slate-500">Project start</div><div className="font-medium">{batch.project_start_date || 'Not set'}</div></div>
+          <div className="ml-6"><div className="text-slate-500">Project end</div><div className="font-medium">{batch.project_end_date || 'Not set'}</div></div>
+        </div>
+        {canManage && <button className="btn-secondary" onClick={() => setEditing(true)}>{isSet ? 'Change dates' : 'Set project dates'}</button>}
+      </div>
+      {editing && (
+        <Modal title="Project start and end dates" onClose={() => setEditing(false)}>
+          <form onSubmit={save} className="space-y-3">
+            <Alert>{error}</Alert>
+            <div><label htmlFor="pd-start" className="label">Project start date *</label>
+              <input id="pd-start" type="date" required className="input" value={form.start} onChange={(e) => setForm({ ...form, start: e.target.value })} />
+              {errs.project_start_date && <p className="mt-1 text-xs text-red-600">{errs.project_start_date}</p>}</div>
+            <div><label htmlFor="pd-end" className="label">Project end date *</label>
+              <input id="pd-end" type="date" required className="input" value={form.end} onChange={(e) => setForm({ ...form, end: e.target.value })} />
+              {errs.project_end_date && <p className="mt-1 text-xs text-red-600">{errs.project_end_date}</p>}</div>
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
+              <button className="btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Save dates'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
 export default function BatchDetail() {
   const { id } = useParams()
   const { user } = useAuth()
@@ -116,6 +163,7 @@ export default function BatchDetail() {
           {canManage && batch.status === 'active' && <Link to={`${base}/batches/${batch.id}/allocate`} className="btn-primary"><Plus className="h-4 w-4" />Allocate projects</Link>}
         </>} />
       <Alert>{error}</Alert>
+      <ProjectDatesCard batch={batch} canManage={canManage} onSaved={(b) => setBatch((old) => ({ ...old, ...b }))} />
       {Object.keys(batch.details).length > 0 && (
         <div className="card"><dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           {Object.entries(batch.details).map(([k, v]) => <div key={k}><dt className="text-slate-500">{k.replace(/_/g, ' ')}</dt><dd className="font-medium">{v}</dd></div>)}

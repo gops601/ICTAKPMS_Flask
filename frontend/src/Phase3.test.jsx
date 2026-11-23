@@ -32,7 +32,7 @@ vi.mock('./services/adminService', async () => {
     downloadFile: vi.fn(),
     ouService: { list: vi.fn().mockResolvedValue([]) },
     domainService: { list: vi.fn() },
-    psService: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), setStatus: vi.fn(), upload: vi.fn(), removeFile: vi.fn(), download: vi.fn() },
+    psService: { list: vi.fn(), get: vi.fn(), create: vi.fn(), update: vi.fn(), setStatus: vi.fn(), upload: vi.fn(), removeFile: vi.fn(), download: vi.fn(), industries: vi.fn().mockResolvedValue([]) },
     importService: { upload: vi.fn(), confirm: vi.fn() },
   }
 })

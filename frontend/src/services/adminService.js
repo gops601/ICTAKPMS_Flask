@@ -28,6 +28,7 @@ export const batchService = {
   create: (body) => api.post('/batches', body).then(d),
   update: (id, body) => api.put(`/batches/${id}`, body).then(d),
   setStatus: (id, status) => api.patch(`/batches/${id}/status`, { status }).then(d),
+  setProjectDates: (id, project_start_date, project_end_date) => api.put(`/batches/${id}/project-dates`, { project_start_date, project_end_date }).then(d),
 }
 
 export const studentService = {
@@ -84,6 +85,7 @@ export const psService = {
   create: (body) => api.post('/problem-statements', body).then(d),
   update: (id, body) => api.put(`/problem-statements/${id}`, body).then(d),
   setStatus: (id, status) => api.patch(`/problem-statements/${id}/status`, { status }).then(d),
+  industries: () => api.get('/problem-statements/industries').then(d),
   upload: (id, kind, file, description) => {
     const form = new FormData()
     form.append('file', file)
@@ -93,6 +95,20 @@ export const psService = {
   removeFile: (id, kind, linkId) => api.delete(`/problem-statements/${id}/${kind}/${linkId}`).then(d),
   download: (id, kind, link) =>
     downloadFile(`/problem-statements/${id}/${kind}/${link.id}/download`, undefined, link.name),
+}
+
+export const proposalService = {
+  mine: () => api.get('/proposals/mine').then(d),
+  list: (params) => api.get('/proposals', { params }).then(withMeta),
+  submit: (title, summary, file) => {
+    const form = new FormData()
+    form.append('title', title)
+    if (summary) form.append('summary', summary)
+    form.append('file', file)
+    return api.post('/proposals', form).then(d)
+  },
+  review: (id, decision, remarks) => api.post(`/proposals/${id}/review`, { decision, remarks }).then(d),
+  download: (p) => downloadFile(`/proposals/${p.id}/download`, undefined, p.file.name),
 }
 
 export const projectService = {

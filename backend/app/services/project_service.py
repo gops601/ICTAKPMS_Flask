@@ -6,7 +6,7 @@ from app.models import (Batch, BatchMentor, Mentor, ProblemStatement, Project, P
                         ProjectGithubRepository, ProjectReview, ProjectStudent, ScrumBoard, ScrumTask, Student,
                         SystemSetting)
 from app.models.base import utcnow
-from app.services import lifecycle
+from app.services import lifecycle, proposal_service
 from app.services.metrics_service import DEFAULT_WEIGHTS, PROJECT_WEEKS, progress_weights, project_metrics  # noqa: F401
 from app.services.fields import parse_date
 from app.services.notification_service import domain_lead_user_ids, notify
@@ -62,7 +62,11 @@ def allocate(batch, items, actor, mentor_id=None, start_date=None):
     if not items:
         raise AppError("Select at least one student", 422)
 
-    start = parse_date(start_date) if start_date else date.today()
+    start = parse_date(start_date) if start_date else (batch.project_start_date or date.today())
+    end = batch.project_end_date  # set by the domain lead; otherwise the default project length applies
+    if end and end <= start:
+        raise AppError("The project start date must be before the batch's project end date", 422,
+                       {"start_date": f"Must be before {end.isoformat()}"})
     mentor = _eligible_batch_mentor(batch, mentor_id) if mentor_id else None
 
     all_ids = [sid for it in items for sid in it["student_ids"]]
@@ -96,17 +100,18 @@ def allocate(batch, items, actor, mentor_id=None, start_date=None):
             raise AppError(f"'{ps.ps_code}' is inactive and cannot be allocated", 422)
         groups = [it["student_ids"]] if it.get("team") else [[sid] for sid in it["student_ids"]]
         for group in groups:
-            created.append(_create_project(batch, ps, [students[i] for i in group], actor, mentor, start))
+            created.append(_create_project(batch, ps, [students[i] for i in group], actor, mentor, start, end))
 
     db.session.flush()
+    proposal_service.withdraw_pending(all_ids)
     _notify_allocation(batch, created)
     return created
 
 
-def _create_project(batch, ps, members, actor, mentor, start):
+def _create_project(batch, ps, members, actor, mentor, start, end=None):
     project = Project(batch_id=batch.id, problem_statement_id=ps.id, mentor_id=mentor.id if mentor else None,
                       title=ps.title, stage="allocated", start_date=start,
-                      target_end_date=start + timedelta(weeks=PROJECT_WEEKS))
+                      target_end_date=end or start + timedelta(weeks=PROJECT_WEEKS))
     db.session.add(project)
     db.session.flush()
     for i, s in enumerate(members):

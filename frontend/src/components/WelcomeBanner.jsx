@@ -22,7 +22,7 @@ export default function WelcomeBanner({ extra }) {
       <BannerArt className="pointer-events-none absolute -right-4 bottom-0 hidden h-full w-72 sm:block" />
       <div className="relative max-w-xl">
         <h2 className="text-xl font-semibold sm:text-2xl">{greeting()}, {first}!</h2>
-        <p className="mt-1 text-sm text-indigo-100">{MESSAGES[user.role]}</p>
+        <p className="mt-1 text-sm text-emerald-100">{MESSAGES[user.role]}</p>
         {extra && <div className="mt-3">{extra}</div>}
       </div>
     </section>

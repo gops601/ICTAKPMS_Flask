@@ -43,7 +43,9 @@ def create_user(data):
     generated = data["password"] is None
     password = data["password"] or user_service.generate_temp_password()
     user = user_service.create_staff_user(data["role"], data["name"], data["email"], password, data["phone"],
-                                          data["domain_id"], data["designation"], data["expertise"])
+                                          data["domain_id"], data["designation"], data["expertise"],
+                                          data["mentor_type"], data["company"], data["industry_sector"],
+                                          data["experience_years"], data["linkedin_url"], data["bio"])
     audit(current_user().id, "user.create", "user", user.id, {"role": data["role"]})
     db.session.commit()
     body = user_to_dict(user)
