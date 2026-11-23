@@ -2,10 +2,11 @@ from flask import request
 from flask_smorest import Blueprint
 
 from app.extensions import db
-from app.models import Batch, Domain, Student
+from app.models import Batch, Domain, Student, Subdomain
 from app.permissions import current_user, roles_required
 from app.permissions.scope import lead_domain_ids
-from app.schemas.org import (ActiveSchema, DomainLeadsSchema, DomainSchema, DomainUpdateSchema, domain_to_dict)
+from app.schemas.org import (ActiveSchema, DomainLeadsSchema, DomainSchema, DomainUpdateSchema, SubdomainSchema,
+                             SubdomainUpdateSchema, domain_to_dict, subdomain_to_dict)
 from app.services import org_service
 from app.utils.audit import audit
 from app.utils.errors import NotFound
@@ -99,3 +100,49 @@ def set_leads(data, domain_id):
     audit(current_user().id, "domain.set_leads", "domain", d.id, {"user_ids": data["user_ids"]})
     db.session.commit()
     return ok(domain_to_dict(d), "Domain leads updated")
+
+
+# ------------------------------------------------------------------ subdomains
+@bp.get("/<int:domain_id>/subdomains")
+@bp.doc(security=SEC, description="Subdomains of a domain (admins, the domain's leads, and mentors of its batches).")
+@roles_required("admin", "domain_lead", "mentor")
+def list_subdomains(domain_id):
+    from app.permissions.scope import mentor_domain_ids
+    user = current_user()
+    if user.role_name == "mentor":
+        if domain_id not in mentor_domain_ids(user):
+            raise NotFound("Domain not found")
+    elif not _visible(user, domain_id):
+        raise NotFound("Domain not found")
+    d = org_service.get_domain(domain_id)
+    items = [s for s in d.subdomains if s.is_active or request.args.get("all") in ("1", "true")]
+    return ok([subdomain_to_dict(s) for s in items])
+
+
+@bp.post("/<int:domain_id>/subdomains")
+@bp.doc(security=SEC, description="Add a subdomain. Admins, or a lead of that domain (e.g. while creating a project).")
+@bp.arguments(SubdomainSchema)
+@roles_required("admin", "domain_lead")
+def add_subdomain(data, domain_id):
+    user = current_user()
+    if not _visible(user, domain_id):
+        raise NotFound("Domain not found")
+    sd = org_service.add_subdomain(org_service.get_domain(domain_id), data["name"])
+    audit(user.id, "subdomain.create", "domain", domain_id, {"name": sd.name})
+    db.session.commit()
+    return ok(subdomain_to_dict(sd), "Subdomain added", 201)
+
+
+@bp.patch("/subdomains/<int:subdomain_id>")
+@bp.doc(security=SEC, description="Rename or (de)activate a subdomain.")
+@bp.arguments(SubdomainUpdateSchema)
+@roles_required("admin", "domain_lead")
+def update_subdomain(data, subdomain_id):
+    user = current_user()
+    sd = db.session.get(Subdomain, subdomain_id)
+    if not sd or not _visible(user, sd.domain_id):
+        raise NotFound("Subdomain not found")
+    org_service.update_subdomain(sd, data.get("name"), data.get("is_active"))
+    audit(user.id, "subdomain.update", "domain", sd.domain_id, {"subdomain_id": sd.id})
+    db.session.commit()
+    return ok(subdomain_to_dict(sd))

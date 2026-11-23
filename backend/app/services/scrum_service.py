@@ -34,14 +34,12 @@ def board_permissions(user, project):
     elif finished:
         reason = "This project is completed; the board is read-only."
     role = user.role_name
-    student = role == "student" and is_member(user, project)
-    can_edit = student and reason is None
-    can_move = can_edit or (role == "mentor" and project.mentor_can_edit_board and reason is None)
-    if role == "mentor" and not can_move:
-        reason = reason or "Mentors can view the board and comment. A Domain Lead can allow status changes."
-    elif role in ("domain_lead", "admin"):
+    # Only the project's students and its mentors change the board; leads and admins are read-only.
+    editor = (role == "student" and is_member(user, project)) or role == "mentor"
+    can_edit = editor and reason is None
+    if role in ("domain_lead", "admin"):
         reason = reason or "You have read-only access to this board."
-    return {"can_create": can_edit, "can_edit": can_edit, "can_delete": can_edit, "can_move": can_move,
+    return {"can_create": can_edit, "can_edit": can_edit, "can_delete": can_edit, "can_move": can_edit,
             "can_comment": role in ("student", "mentor", "admin"), "reason": None if can_edit else reason}
 
 

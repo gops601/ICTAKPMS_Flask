@@ -46,7 +46,7 @@ export default function BatchForm() {
   const submit = async (e) => {
     e.preventDefault(); setBusy(true); setError(''); setErrs({})
     const body = {
-      code: form.code, name: form.name, domain_id: Number(form.domain_id),
+      name: form.name, domain_id: Number(form.domain_id),
       start_date: form.start_date || null, end_date: form.end_date || null,
       details: Object.fromEntries(fields.map((f) => [f.field_key, form.details[f.field_key] ?? ''])),
     }
@@ -82,8 +82,10 @@ export default function BatchForm() {
             {err('domain')}{err('domain_id')}
           </div>
           <div>
-            <label htmlFor="code" className="label">Batch code *</label>
-            <input id="code" className="input" required value={form.code} onChange={set('code')} />{err('code')}
+            <label htmlFor="code" className="label">Batch ID</label>
+            <input id="code" className="input bg-slate-50" readOnly value={editing ? form.code : ''}
+              placeholder="Generated automatically (ICT_<domain>_…)" />
+            {!editing && <p className="mt-1 text-xs text-slate-500">Issued when you save, based on the domain's short code.</p>}
           </div>
           <div>
             <label htmlFor="name" className="label">Batch name *</label>

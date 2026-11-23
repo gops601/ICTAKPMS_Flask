@@ -61,10 +61,12 @@ def summarize(review):
             "criteria_count": len(review.criteria), "scored_count": len(scored)}
 
 
-def overall_performance(project_id):
-    """Project-level performance across SUBMITTED reviews only."""
+def overall_performance(project_id, include_scores=True):
+    """Project-level performance across SUBMITTED reviews only. Students never receive scores (include_scores=False)."""
     reviews = (db.session.query(ProjectReview).filter_by(project_id=project_id, status="submitted")
                .order_by(ProjectReview.week_no).all())
+    if not include_scores:
+        return {"reviews_submitted": len(reviews), "reviews_total": PROJECT_WEEKS}
     rows = [{"week_no": r.week_no, **summarize(r)} for r in reviews]
     total_max = sum(Decimal(str(x["total_max"])) for x in rows)
     obtained = sum(Decimal(str(x["total_obtained"])) for x in rows)
@@ -113,12 +115,19 @@ def criterion_to_dict(c):
             "marks_obtained": _f(c.score.marks_obtained) if c.score else None, "remarks": c.score.remarks if c.score else None}
 
 
-def student_remark_rows(review, only_student_id=None):
-    """One row per project member (empty remark if none yet); a student only ever gets their own row."""
+def student_remark_rows(review, only_student_id=None, include_marks=True):
+    """One row per project member (the individual evaluation: remark + marks). A student only ever gets their own
+    row and never the marks."""
     project = db.session.get(Project, review.project_id)
-    existing = {r.student_id: r.remarks for r in review.student_remarks}
-    rows = [{"student_id": m.student_id, "name": m.student.user.name, "registration_no": m.student.registration_no,
-             "remarks": existing.get(m.student_id, "")} for m in project.members]
+    existing = {r.student_id: r for r in review.student_remarks}
+    rows = []
+    for m in project.members:
+        row = existing.get(m.student_id)
+        item = {"student_id": m.student_id, "name": m.student.user.name, "registration_no": m.student.registration_no,
+                "remarks": (row.remarks if row else None) or ""}
+        if include_marks:
+            item["marks_obtained"] = _f(row.marks_obtained) if row else None
+        rows.append(item)
     return [r for r in rows if only_student_id is None or r["student_id"] == only_student_id]
 
 
@@ -145,11 +154,20 @@ def review_to_dict(review, role, viewer_student_id=None):
                 "review_date": review.review_date.isoformat() if review.review_date else None}
     m = db.session.get(Mentor, review.mentor_id) if review.mentor_id else None
     mentor = m.user.name if m else None
+    if role == "student":
+        # Students see the mentor's words only: no marks, totals or percentages, and only their own remark.
+        return {**base, "visible": True, "review_date": review.review_date.isoformat() if review.review_date else None,
+                "mentor": mentor, "submitted_at": review.submitted_at.isoformat() if review.submitted_at else None,
+                **{f: getattr(review, f) for f in FEEDBACK_FIELDS},
+                "criteria": [{"id": c.id, "name": c.name, "remarks": c.score.remarks if c.score else None} for c in review.criteria],
+                "summary": None, "student_remarks": student_remark_rows(review, viewer_student_id, include_marks=False),
+                "revert_note": None}
     return {**base, "visible": True, "review_date": review.review_date.isoformat() if review.review_date else None,
             "mentor": mentor, "submitted_at": review.submitted_at.isoformat() if review.submitted_at else None,
             **{f: getattr(review, f) for f in FEEDBACK_FIELDS},
             "criteria": [criterion_to_dict(c) for c in review.criteria], "summary": summarize(review),
-            "student_remarks": student_remark_rows(review, viewer_student_id if role == "student" else None),
+            "individual_max_marks": _f(review.individual_max_marks),
+            "student_remarks": student_remark_rows(review),
             "revert_note": None if role == "student" else revert_note(review)}
 
 
@@ -255,8 +273,18 @@ def _apply_feedback(review, payload):
         review.review_date = new_date
 
 
+def _apply_individual_max(review, payload):
+    if "individual_max_marks" not in payload or payload["individual_max_marks"] in (None, ""):
+        return
+    mx = to_decimal(payload["individual_max_marks"], "Individual maximum marks")
+    if mx <= 0 or mx > MAX_MARKS:
+        raise AppError("Validation failed", 422, {"individual_max_marks": f"Must be between 0.01 and {MAX_MARKS}"})
+    review.individual_max_marks = mx
+
+
 def _apply_student_remarks(review, project, items, user):
-    """items: [{student_id, remarks}]. Only members of this project; empty text removes the remark."""
+    """items: [{student_id, remarks, marks_obtained}] - the individual evaluation of each member.
+    Only members of this project; a row with neither remark nor marks is removed."""
     if items is None:
         return
     members = {m.student_id for m in project.members}
@@ -264,21 +292,33 @@ def _apply_student_remarks(review, project, items, user):
     errors = {}
     for i, it in enumerate(items):
         sid = it.get("student_id")
+        key = f"student_remarks.{i}"
         if sid not in members:
-            errors[f"student_remarks.{i}"] = "Not a member of this project"
+            errors[key] = "Not a member of this project"
             continue
         text = (it.get("remarks") or "").strip()
         if len(text) > 2000:
-            errors[f"student_remarks.{i}"] = "Remarks are too long (max 2000 characters)"
+            errors[key] = "Remarks are too long (max 2000 characters)"
             continue
+        marks = None
+        if it.get("marks_obtained") not in (None, ""):
+            try:
+                marks = to_decimal(it["marks_obtained"], "Individual marks")
+            except AppError as e:
+                errors[key] = e.message
+                continue
+            if marks < 0 or marks > review.individual_max_marks:
+                errors[key] = f"Individual marks must be between 0 and {review.individual_max_marks:g}"
+                continue
         row = existing.get(sid)
-        if not text:
+        if not text and marks is None:
             if row:
                 db.session.delete(row)
         elif row:
-            row.remarks, row.updated_by = text, user.id
+            row.remarks, row.marks_obtained, row.updated_by = text or None, marks, user.id
         else:
-            db.session.add(ReviewStudentRemark(review_id=review.id, student_id=sid, remarks=text, updated_by=user.id))
+            db.session.add(ReviewStudentRemark(review_id=review.id, student_id=sid, remarks=text or None,
+                                               marks_obtained=marks, updated_by=user.id))
     if errors:
         raise AppError("Validation failed", 422, errors)
     db.session.flush()
@@ -310,6 +350,7 @@ def save_draft(review, payload, user):
     if "criteria" in payload:
         _apply_criteria(review, _clean_criteria(payload["criteria"]))
     _apply_feedback(review, payload)
+    _apply_individual_max(review, payload)
     _apply_student_remarks(review, project, payload.get("student_remarks"), user)
     review.mentor_id = mentor_profile(user).id
     if review.status == "pending":
@@ -326,6 +367,7 @@ def submit(review, payload, user):
     if "criteria" in payload:
         _apply_criteria(review, _clean_criteria(payload["criteria"]))
     _apply_feedback(review, payload)
+    _apply_individual_max(review, payload)
     _apply_student_remarks(review, project, payload.get("student_remarks"), user)
     db.session.flush()
     errors = {}
@@ -336,6 +378,14 @@ def submit(review, payload, user):
         errors["criteria"] = "Score every criterion before submitting: " + ", ".join(missing)
     if not (review.remarks or "").strip():
         errors["remarks"] = "Overall feedback is required to submit"
+    if len(project.members) > 1:  # a team review also evaluates every member individually
+        rows = {r.student_id: r for r in review.student_remarks}
+        incomplete = [m.student.user.name for m in project.members
+                      if m.student_id not in rows or rows[m.student_id].marks_obtained is None
+                      or not (rows[m.student_id].remarks or "").strip()]
+        if incomplete:
+            errors["student_remarks"] = ("Evaluate every team member (individual marks and remarks) before submitting: "
+                                         + ", ".join(incomplete))
     if errors:
         raise AppError(next(iter(errors.values())), 422, errors)
     review.mentor_id = mentor_profile(user).id
@@ -347,8 +397,7 @@ def submit(review, payload, user):
     audit(user.id, "review.submit", "project_review", review.id, {"project_id": project.id, "week": review.week_no})
     db.session.flush()
     notify(member_user_ids(project), "review_completed", f"Week {review.week_no} review completed",
-           f"Your Week {review.week_no} evaluation is ready: {s['total_obtained']:g}/{s['total_max']:g} ({s['percentage']:g}%).",
-           "/student/reviews")
+           f"Your Week {review.week_no} evaluation is ready. Open it to read your mentor's remarks.", "/student/reviews")
     return review
 
 

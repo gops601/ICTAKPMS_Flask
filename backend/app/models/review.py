@@ -27,6 +27,7 @@ class ProjectReview(TimestampMixin, db.Model):
     strengths = db.Column(db.Text)
     improvements = db.Column(db.Text)
     recommendations = db.Column(db.Text)
+    individual_max_marks = db.Column(db.Numeric(6, 2), default=10, server_default="10", nullable=False)  # per-student score scale
     submitted_at = db.Column(db.DateTime)
     version = db.Column(db.Integer, default=1, nullable=False)  # optimistic concurrency
 
@@ -81,7 +82,8 @@ class ReviewStudentRemark(TimestampMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     review_id = db.Column(db.Integer, db.ForeignKey("project_reviews.id", ondelete="CASCADE"), nullable=False, index=True)
     student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
-    remarks = db.Column(db.Text, nullable=False)
+    remarks = db.Column(db.Text)  # what the student sees
+    marks_obtained = db.Column(db.Numeric(6, 2))  # individual score: mentor/lead/admin only, never shown to students
     updated_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
 
     review = db.relationship("ProjectReview", back_populates="student_remarks")

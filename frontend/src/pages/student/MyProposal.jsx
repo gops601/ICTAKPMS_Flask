@@ -25,7 +25,7 @@ export default function MyProposal() {
 
   const submit = async (e) => {
     e.preventDefault()
-    if (!file) return setError('Choose the detailed problem statement file first.')
+    if (!file) return setError('Choose the detailed proposal document first.')
     setBusy(true); setError(''); setErrs({}); setDone(false)
     try {
       await proposalService.submit(form.title, form.summary, file)
@@ -41,19 +41,19 @@ export default function MyProposal() {
 
   return (
     <div className="max-w-3xl space-y-4">
-      <PageHeader title="My Problem Statement" subtitle="Propose your own detailed problem statement. Your mentor must approve it." />
+      <PageHeader title="My Project Proposal" subtitle="Propose your own project with a detailed document. Your mentor must approve it." />
       <Alert>{error}</Alert>
       {done && <Alert type="success">Submitted. Your mentor has been notified.</Alert>}
       {locked && <Alert type={info.has_project ? 'warning' : 'info'}>{info.blocked_reason}</Alert>}
 
-      <form onSubmit={submit} className="card space-y-3" aria-label="Upload problem statement">
+      <form onSubmit={submit} className="card space-y-3" aria-label="Upload project proposal">
         <fieldset disabled={locked || busy} className="space-y-3 disabled:opacity-60">
           <div><label htmlFor="pp-title" className="label">Title *</label>
             <input id="pp-title" className="input" required maxLength={255} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
             {errs.title && <p className="mt-1 text-xs text-red-600">{errs.title}</p>}</div>
           <div><label htmlFor="pp-sum" className="label">Short summary</label>
             <textarea id="pp-sum" className="input min-h-[80px]" value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} /></div>
-          <div><label htmlFor="pp-file" className="label">Detailed problem statement *</label>
+          <div><label htmlFor="pp-file" className="label">Detailed project proposal *</label>
             <input id="pp-file" ref={fileRef} type="file" className="text-sm" onChange={(e) => setFile(e.target.files?.[0] || null)} />
             <p className="mt-1 text-xs text-slate-500">PDF, Word, PowerPoint, Excel, images or text · up to 25 MB.</p></div>
           <div className="flex justify-end">

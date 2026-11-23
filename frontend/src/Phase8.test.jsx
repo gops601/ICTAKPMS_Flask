@@ -80,7 +80,7 @@ describe('admin dashboard', () => {
     svc.dashboardService.get.mockResolvedValue(ADMIN)
     renderIn(<AdminDashboard />)
     expect(await screen.findByRole('heading', { name: /institution dashboard/i })).toBeInTheDocument()
-    for (const [label, value] of [['OUs', '4'], ['Domains', '6'], ['Students', '5'], ['Mentors', '2'], ['Problem statements', '3'], ['In progress', '3'],
+    for (const [label, value] of [['OUs', '4'], ['Domains', '6'], ['Students', '5'], ['Mentors', '2'], ['Projects on shelf', '3'], ['In progress', '3'],
       ['Awaiting SRS approval', '1'], ['Pending weekly reviews', '1'], ['Completed', '1'], ['Delayed', '2']]) {
       expect(within(tile(label)).getByText(value)).toBeInTheDocument()
     }
@@ -229,9 +229,9 @@ describe('student dashboard', () => {
     project: { id: 11, title: 'Smart Attendance', stage: 'implementation', stage_label: 'Implementation', progress: 57.5, is_delayed: true, delay_reasons: ['1 Scrum task(s) overdue'], start_date: '2026-03-02', target_end_date: '2026-03-30' },
     problem_statement: { id: 3, ps_code: 'PS-1', title: 'Attendance' }, domain: 'AI & ML', batch: { code: 'B1', name: 'Batch One' }, mentors: ['Mia One'],
     srs_status: 'approved', srs_status_label: 'Approved', latest_srs_feedback: { decision: 'approved', remarks: 'Looks good' },
-    reviews: [{ week_no: 1, label: 'Week 1', due_date: '2026-03-09', status: 'submitted', obtained: 80, max: 100, percentage: 80 },
+    reviews: [{ week_no: 1, label: 'Week 1', due_date: '2026-03-09', status: 'submitted' },
       { week_no: 2, label: 'Week 2', due_date: '2026-03-16', status: 'pending' }, { week_no: 3, label: 'Week 3', due_date: '2026-03-23', status: 'pending' }, { week_no: 4, label: 'Week 4', due_date: '2026-03-30', status: 'pending' }],
-    latest_mentor_feedback: { week_no: 1, remarks: 'Good start', mentor: null }, scrum: { total: 2, completed: 1, overdue: 1 }, github_url: 'https://github.com/o/alpha', overall_score_pct: 80,
+    latest_mentor_feedback: { week_no: 1, remarks: 'Good start', mentor: null }, scrum: { total: 2, completed: 1, overdue: 1 }, github_url: 'https://github.com/o/alpha',
     timeline: [{ stage: 'allocated', label: 'Project Allocated', at: '2026-03-02T10:00:00', is_reopen: false }, { stage: 'implementation', label: 'Implementation', at: '2026-03-05T10:00:00', is_reopen: true }],
   }
   beforeEach(() => { mockUser = { id: 9, name: 'Stu', role: 'student' } })
@@ -251,7 +251,7 @@ describe('student dashboard', () => {
     expect(within(screen.getByRole('region', { name: 'Latest mentor feedback' })).getByText(/Looks good/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /github.com\/o\/alpha/ })).toBeInTheDocument()
     const status = screen.getByRole('region', { name: 'Review status' })
-    expect(within(status).getByText('80%')).toBeInTheDocument()
+    expect(within(status).getByText('Reviewed')).toBeInTheDocument()          // no percentage: students see remarks only
     expect(within(status).getAllByText('Pending')).toHaveLength(3)
     const tl = screen.getByRole('region', { name: 'Project timeline' })
     expect(within(tl).getByText('Project Allocated')).toBeInTheDocument()
@@ -259,16 +259,12 @@ describe('student dashboard', () => {
     expect(screen.getByRole('link', { name: 'Scrum board' })).toHaveAttribute('href', '/student/scrum')
   })
 
-  it('charts only published review scores (table view shows exact marks)', async () => {
+  it('shows no scores to students: no score chart and no percentages', async () => {
     svc.dashboardService.get.mockResolvedValue(STUDENT)
     renderIn(<StudentDashboard />)
-    const card = await screen.findByRole('region', { name: 'Weekly review scores' })
-    await userEvent.click(within(card).getByRole('button', { name: /view as table/i }))
-    const rows = within(card).getAllByRole('row').slice(1)
-    expect(rows).toHaveLength(1)
-    expect(rows[0]).toHaveTextContent('Week 1')
-    expect(rows[0]).toHaveTextContent('80')
-    expect(within(card).getByText('Overall 80%')).toBeInTheDocument()
+    await screen.findByRole('region', { name: 'Project summary' })
+    expect(screen.queryByRole('region', { name: 'Weekly review scores' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/\d+%/, { selector: 'li *' })).not.toBeInTheDocument()
   })
 
   it('handles a student without a project', async () => {
@@ -278,12 +274,11 @@ describe('student dashboard', () => {
   })
 
   it('shows a no-feedback state and no GitHub hint when appropriate', async () => {
-    svc.dashboardService.get.mockResolvedValue({ ...STUDENT, latest_mentor_feedback: null, latest_srs_feedback: null, github_url: null, overall_score_pct: null,
+    svc.dashboardService.get.mockResolvedValue({ ...STUDENT, latest_mentor_feedback: null, latest_srs_feedback: null, github_url: null,
       project: { ...STUDENT.project, is_delayed: false, delay_reasons: [] }, reviews: STUDENT.reviews.map((r) => ({ ...r, status: 'pending' })) })
     renderIn(<StudentDashboard />)
     expect(await screen.findByText(/no feedback yet/i)).toBeInTheDocument()
     expect(screen.getByText(/no github repository added yet/i)).toBeInTheDocument()
-    expect(screen.getByText(/no review has been published yet/i)).toBeInTheDocument()
   })
 })
 

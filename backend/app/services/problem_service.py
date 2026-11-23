@@ -4,9 +4,10 @@ import re
 import bleach
 
 from app.extensions import db
-from app.models import Domain, ProblemStatement
+from app.models import Domain, ProblemStatement, Subdomain
 from app.permissions.scope import can_access_domain
 from app.utils.errors import AppError, NotFound
+from app.utils.ids import generate_id
 
 DIFFICULTIES = ("easy", "medium", "hard")
 STATUSES = ("active", "inactive")
@@ -69,6 +70,19 @@ def validate_ps_data(data, user, existing=None):
         errors["domain"] = f"Domain '{domain.name}' is inactive"
     clean["domain_id"] = domain.id if domain else None
 
+    # Subdomain: must belong to the chosen domain, and is required when the domain has active subdomains.
+    sub_id = data.get("subdomain_id", existing.subdomain_id if existing else None)
+    sub = db.session.get(Subdomain, sub_id) if sub_id else None
+    if domain:
+        if sub_id and (not sub or sub.domain_id != domain.id):
+            errors["subdomain_id"] = f"That subdomain does not belong to {domain.name}"
+            sub = None
+        elif sub and not sub.is_active and (not existing or existing.subdomain_id != sub.id):
+            errors["subdomain_id"] = f"Subdomain '{sub.name}' is inactive"
+        elif not sub and any(s.is_active for s in domain.subdomains) and (not existing or "subdomain_id" in data):
+            errors["subdomain_id"] = f"Choose a subdomain of {domain.name}"
+    clean["subdomain_id"] = sub.id if sub else None
+
     difficulty = str(data.get("difficulty", existing.difficulty if existing else "medium") or "medium").strip().lower()
     if difficulty not in DIFFICULTIES:
         errors["difficulty"] = f"Difficulty must be one of: {', '.join(DIFFICULTIES)}"
@@ -109,6 +123,12 @@ def validate_ps_data(data, user, existing=None):
     if not clean.get("description") and not clean.get("problem_definition"):
         errors["description"] = "Provide a project description or a problem definition"
     return (None if errors else clean), errors
+
+
+def new_ps_code():
+    """System-issued ICT_PS_XXXXXX id, used when the single-create form leaves the ID blank."""
+    return generate_id("PS", lambda c: db.session.query(ProblemStatement.id).filter(
+        db.func.lower(ProblemStatement.ps_code) == c.lower()).first() is not None)
 
 
 def get_ps_or_404(ps_id):

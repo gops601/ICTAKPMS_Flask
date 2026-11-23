@@ -18,9 +18,9 @@ MANAGERS = ("admin", "domain_lead")
 
 
 @bp.post("/project-allocation")
-@bp.doc(security=SEC)
+@bp.doc(security=SEC, description="Allocate problem statements to students or teams. Mentors (own batches), domain leads and admins.")
 @bp.arguments(AllocationSchema)
-@roles_required(*MANAGERS)
+@roles_required(*MANAGERS, "mentor")
 def allocate(data):
     user = current_user()
     batch = ensure_batch_access(user, data["batch_id"])
@@ -86,10 +86,21 @@ def transition(data, project_id):
     return ok(project_to_dict(project, True, user.role_name), f"Project moved to {lifecycle.LABELS[project.stage]}")
 
 
+@bp.post("/projects/<int:project_id>/close")
+@bp.doc(security=SEC, description="The domain lead closes a completed project.")
+@roles_required("domain_lead", "admin")
+def close(project_id):
+    user = current_user()
+    project = ensure_project_access(user, project_id)
+    lifecycle.close(project, user)
+    db.session.commit()
+    return ok(project_to_dict(project, True, user.role_name), "Project closed")
+
+
 @bp.post("/projects/<int:project_id>/reopen")
-@bp.doc(security=SEC)
+@bp.doc(security=SEC, description="Domain lead (own domain) or admin reopens a completed/closed project to an earlier stage.")
 @bp.arguments(ReopenSchema)
-@roles_required("admin")
+@roles_required("domain_lead", "admin")
 def reopen(data, project_id):
     user = current_user()
     project = ensure_project_access(user, project_id)

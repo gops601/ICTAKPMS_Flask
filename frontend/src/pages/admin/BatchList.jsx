@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Download, Eye, Pencil, Plus, Upload } from 'lucide-react'
+import { Download, Eye, Pencil, Plus, Trash2, Upload } from 'lucide-react'
 import { batchService, domainService, ouService, reportService } from '../../services/adminService'
 import { errorMessage } from '../../services/api'
 import { useDebounced, useList } from '../../hooks/useList'
@@ -21,6 +21,8 @@ export default function BatchList() {
   const [ous, setOus] = useState([])
   const [domains, setDomains] = useState([])
   const [toggle, setToggle] = useState(null)
+  const [deleting, setDeleting] = useState(null)
+  const [withStudents, setWithStudents] = useState(false)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
   const dq = useDebounced(q)
@@ -42,6 +44,12 @@ export default function BatchList() {
     setBusy(true)
     try { await batchService.setStatus(toggle.id, toggle.status === 'active' ? 'closed' : 'active'); setToggle(null); reload() }
     catch (e) { setActionError(errorMessage(e)); setToggle(null) } finally { setBusy(false) }
+  }
+
+  const confirmDelete = async () => {
+    setBusy(true); setActionError('')
+    try { await batchService.remove(deleting.id, withStudents); setDeleting(null); reload() }
+    catch (e) { setActionError(errorMessage(e)); setDeleting(null) } finally { setBusy(false) }
   }
 
   return (
@@ -79,11 +87,24 @@ export default function BatchList() {
               <Link className="btn-secondary" to={`/admin/batches/${b.id}`}><Pencil className="h-4 w-4" />Edit</Link>
               <button className="btn-secondary" aria-label={`Download detailed report for ${b.code}`} onClick={() => reportService.batchDetailed(b.id).catch((e) => setActionError(errorMessage(e, 'Download failed')))}><Download className="h-4 w-4" />Report</button>
               <button className="btn-secondary" onClick={() => setToggle(b)}>{b.status === 'active' ? 'Close' : 'Reopen'}</button>
+              <button className="btn-secondary" aria-label={`Delete batch ${b.code}`} onClick={() => { setActionError(''); setWithStudents(false); setDeleting(b) }}><Trash2 className="h-4 w-4" />Delete</button>
             </div>
           ) },
         ]} />
         <Pagination meta={meta} onPage={setPage} />
       </div>
+      {deleting && (
+        <ConfirmDialog danger confirmLabel="Delete permanently" busy={busy} onConfirm={confirmDelete} onCancel={() => setDeleting(null)}
+          message={<div className="space-y-3 text-left">
+            <p>Permanently delete batch <b>{deleting.code}</b> – {deleting.name}? This cannot be undone. A batch that has projects cannot be deleted (close it instead).</p>
+            {deleting.student_count > 0 && (
+              <label className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-800">
+                <input type="checkbox" className="mt-1" checked={withStudents} onChange={(e) => setWithStudents(e.target.checked)} />
+                <span>Also delete its {deleting.student_count} student(s) and their login accounts. Without this, the batch can only be deleted once it has no students.</span>
+              </label>
+            )}
+          </div>} />
+      )}
       {toggle && (
         <ConfirmDialog message={toggle.status === 'active' ? `Close batch ${toggle.code}?` : `Reopen batch ${toggle.code}?`}
           confirmLabel={toggle.status === 'active' ? 'Close batch' : 'Reopen'} danger={toggle.status === 'active'} busy={busy}

@@ -197,7 +197,7 @@ def test_allocation_is_atomic(client, world):
 
 def test_allocation_permissions(client, world):
     assert allocate(client, world, [0], who="lb").status_code == 404        # other domain's lead
-    assert allocate(client, world, [0], who="m1").status_code == 403
+    assert allocate(client, world, [0], who="m2").status_code == 404        # mentor not on this batch
     assert allocate(client, world, [0], who="s1").status_code == 403
     assert allocate(client, world, [0], who="admin").status_code == 201
     world["batch"].status = "closed"
@@ -340,14 +340,15 @@ def test_mentor_cannot_touch_unassigned_project(client, world):
     assert go(client, world, pid, "m2", "final_evaluation").status_code == 404
 
 
-def test_reopen_is_admin_only_audited_and_notifies(client, world):
+def test_reopen_is_for_lead_and_admin_only_audited_and_notifies(client, world):
     assign(client, world, world["m1"])
     pid = pid_for(client, world)
     submit_reviews(pid)
     force(pid, "completed", final_signed_off_by=world["m1u"].id, completed_at=db.session.get(Project, pid).created_at)
     body = {"to": "implementation", "reason": "Marks need correction"}
-    for who in ("la", "m1", "s1"):
+    for who in ("m1", "s1"):
         assert client.post(f"/api/projects/{pid}/reopen", headers=world["H"][who], json=body).status_code == 403
+    assert client.post(f"/api/projects/{pid}/reopen", headers=world["H"]["lb"], json=body).status_code == 404  # other domain's lead
     h = world["H"]["admin"]
     assert client.post(f"/api/projects/{pid}/reopen", headers=h, json={"to": "implementation", "reason": "x"}).status_code == 422
     assert client.post(f"/api/projects/{pid}/reopen", headers=h, json={"to": "completed", "reason": "Because"}).status_code == 422
@@ -460,9 +461,10 @@ def test_admin_assigning_batch_to_domain_notifies_the_lead(client, world):
     h = world["H"]["admin"]
     ou = db.session.query(OrganisationalUnit).filter_by(code="RETAIL").one()
     body = {"code": "NB-1", "name": "New", "ou_id": ou.id, "domain_id": domain("AIML").id, "details": {"programme_name": "P"}}
-    assert client.post("/api/batches", headers=h, json=body).status_code == 201
+    created = client.post("/api/batches", headers=h, json=body)
+    assert created.status_code == 201
     assert db.session.query(Notification).filter_by(user_id=world["la"].id, type="batch_assigned").count() == 1
-    bid = db.session.query(Batch).filter_by(code="NB-1").one().id
+    bid = created.get_json()["data"]["id"]
     client.put(f"/api/batches/{bid}", headers=h, json={"domain_id": domain("IOT").id})
     lb = db.session.query(DomainLead).filter_by(domain_id=domain("IOT").id).one().user_id
     assert db.session.query(Notification).filter_by(user_id=lb, type="batch_assigned").count() == 1

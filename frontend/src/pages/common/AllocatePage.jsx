@@ -44,7 +44,7 @@ export default function AllocatePage() {
   const submit = async (e) => {
     e.preventDefault()
     setError('')
-    if (!form.ps_id) return setError('Choose a problem statement.')
+    if (!form.ps_id) return setError('Choose a project from the Project Shelf.')
     if (selected.size === 0) return setError('Select at least one student.')
     setBusy(true)
     try {
@@ -61,16 +61,16 @@ export default function AllocatePage() {
 
   return (
     <div className="max-w-4xl space-y-4">
-      <PageHeader title={`Allocate projects – ${batch.code}`} subtitle="Pick a problem statement, then the students who will work on it." />
+      <PageHeader title={`Allocate projects – ${batch.code}`} subtitle="Pick a project from the Project Shelf, then the students who will work on it." />
       <form onSubmit={submit} className="space-y-4">
         <Alert>{error}</Alert>
         <div className="card grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label htmlFor="al-ps" className="label">Problem statement *</label>
+            <label htmlFor="al-ps" className="label">Project (from the Project Shelf) *</label>
             <select id="al-ps" className="input" value={form.ps_id} onChange={(e) => setForm({ ...form, ps_id: e.target.value })}>
               <option value="">Select…</option>{statements.map((p) => <option key={p.id} value={p.id}>{p.ps_code} – {p.title} ({p.difficulty})</option>)}
             </select>
-            {statements.length === 0 && <p className="mt-1 text-xs text-orange-700">No active problem statements in this domain yet.</p>}
+            {statements.length === 0 && <p className="mt-1 text-xs text-orange-700">No active projects on the Project Shelf for this domain yet.</p>}
           </div>
           <div>
             <label htmlFor="al-mentor" className="label">Mentor (optional override)</label>

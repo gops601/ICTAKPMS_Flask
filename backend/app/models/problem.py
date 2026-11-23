@@ -8,6 +8,7 @@ class ProblemStatement(TimestampMixin, db.Model):
     ps_code = db.Column(db.String(50), unique=True, nullable=False)  # Problem Statement ID
     title = db.Column(db.String(255), nullable=False)
     domain_id = db.Column(db.Integer, db.ForeignKey("domains.id", ondelete="RESTRICT"), nullable=False, index=True)
+    subdomain_id = db.Column(db.Integer, db.ForeignKey("subdomains.id", ondelete="SET NULL"), index=True)
     description = db.Column(db.Text)
     problem_definition = db.Column(db.Text)
     objectives = db.Column(db.Text)
@@ -26,6 +27,7 @@ class ProblemStatement(TimestampMixin, db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
 
     domain = db.relationship("Domain")
+    subdomain = db.relationship("Subdomain")
     datasets = db.relationship("ProblemStatementDataset", back_populates="problem_statement",
                                cascade="all, delete-orphan")
     documents = db.relationship("ProblemStatementDocument", back_populates="problem_statement",

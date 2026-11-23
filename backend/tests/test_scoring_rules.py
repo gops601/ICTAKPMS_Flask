@@ -123,8 +123,8 @@ def test_mentor_sees_a_remark_box_for_every_student_and_saves_individual_remarks
 
 def test_each_student_sees_only_their_own_remark_after_submission(client, world, team):    # noqa: F811
     rv = rid(world["main"], 1)
-    submit(client, world, "m1", rv, **full(), student_remarks=[{"student_id": team["s1"], "remarks": "Great leadership"},
-                                                                {"student_id": team["s4"], "remarks": "Please commit more often"}])
+    submit(client, world, "m1", rv, **full(), student_remarks=[{"student_id": team["s1"], "remarks": "Great leadership", "marks_obtained": 9},
+                                                                {"student_id": team["s4"], "remarks": "Please commit more often", "marks_obtained": 5}])
     s1 = client.get(f"/api/reviews/{rv}", headers=world["H"]["s1"]).get_json()["data"]
     s4 = client.get(f"/api/reviews/{rv}", headers=world["H"]["s4"]).get_json()["data"]
     assert [r["remarks"] for r in s1["student_remarks"]] == ["Great leadership"]
@@ -133,6 +133,8 @@ def test_each_student_sees_only_their_own_remark_after_submission(client, world,
     assert s1["remarks"] == "Good work"                                                     # shared overall feedback is visible to both
     lead = client.get(f"/api/reviews/{rv}", headers=world["H"]["la"]).get_json()["data"]
     assert len(lead["student_remarks"]) == 2                                                # monitors see everyone's
+    assert {r["marks_obtained"] for r in lead["student_remarks"]} == {9.0, 5.0}             # ... including individual marks
+    assert all("marks_obtained" not in r for r in s1["student_remarks"] + s4["student_remarks"])   # students never see marks
 
 
 def test_student_remarks_are_validated_and_frozen_after_submission(client, world, team):   # noqa: F811
@@ -142,14 +144,16 @@ def test_student_remarks_are_validated_and_frozen_after_submission(client, world
     assert r.status_code == 422 and "student_remarks.0" in r.get_json()["errors"]
     assert put(client, world, "m1", rv, student_remarks=[{"student_id": team["s1"], "remarks": "x" * 2001}]).status_code == 422
     assert db.session.query(ReviewStudentRemark).count() == 0
-    submit(client, world, "m1", rv, **full(), student_remarks=[{"student_id": team["s1"], "remarks": "Solid"}])
+    submit(client, world, "m1", rv, **full(), student_remarks=[{"student_id": team["s1"], "remarks": "Solid", "marks_obtained": 8},
+                                                                {"student_id": team["s4"], "remarks": "Fine", "marks_obtained": 7}])
     assert put(client, world, "m1", rv, student_remarks=[{"student_id": team["s1"], "remarks": "Changed"}]).status_code == 409
-    assert db.session.query(ReviewStudentRemark).one().remarks == "Solid"
+    assert {r.remarks for r in db.session.query(ReviewStudentRemark)} == {"Solid", "Fine"}
 
 
 def test_student_remarks_are_kept_in_the_revert_history(client, world, team):   # noqa: F811
     rv = rid(world["main"], 1)
-    submit(client, world, "m1", rv, **full(), student_remarks=[{"student_id": team["s4"], "remarks": "Original remark"}])
+    submit(client, world, "m1", rv, **full(), student_remarks=[{"student_id": team["s1"], "remarks": "Ok", "marks_obtained": 6},
+                                                                {"student_id": team["s4"], "remarks": "Original remark", "marks_obtained": 7}])
     revert(client, world, "la", rv)
     rev = client.get(f"/api/reviews/{rv}/revisions", headers=world["H"]["m1"]).get_json()["data"][0]
     assert any(r["remarks"] == "Original remark" for r in rev["snapshot"]["student_remarks"])
@@ -247,3 +251,44 @@ def test_detailed_report_formats_audit_and_injection_guard(client, report_world)
     db.session.commit()
     csv_text = detailed(client, report_world, "admin", qs="?format=csv&sheet=students").data.decode("utf-8-sig")
     assert "'=HYPERLINK" in csv_text and ",=HYPERLINK" not in csv_text
+
+
+# ================================================= individual evaluation + students never see scores
+def test_team_review_needs_every_member_evaluated_individually(client, world, team):   # noqa: F811
+    rv = rid(world["main"], 1)
+    r = submit(client, world, "m1", rv, **full(), student_remarks=[{"student_id": team["s1"], "remarks": "Good", "marks_obtained": 8}])
+    assert r.status_code == 422 and "Fourth Student" in r.get_json()["errors"]["student_remarks"]
+    r = submit(client, world, "m1", rv, student_remarks=[{"student_id": team["s4"], "remarks": "No marks given"}])
+    assert r.status_code == 422                                                         # marks are required too
+    r = submit(client, world, "m1", rv, student_remarks=[{"student_id": team["s4"], "remarks": "Ok", "marks_obtained": 6}])
+    assert r.status_code == 200 and r.get_json()["data"]["status"] == "submitted"
+
+
+def test_individual_marks_are_bounded_by_the_individual_maximum(client, world, team):   # noqa: F811
+    rv = rid(world["main"], 1)
+    bad = put(client, world, "m1", rv, student_remarks=[{"student_id": team["s1"], "remarks": "x", "marks_obtained": 11}])
+    assert bad.status_code == 422 and "student_remarks.0" in bad.get_json()["errors"]
+    assert put(client, world, "m1", rv, individual_max_marks=20,
+               student_remarks=[{"student_id": team["s1"], "remarks": "x", "marks_obtained": 11}]).status_code == 200
+
+
+def test_solo_review_does_not_require_individual_marks(client, world):   # noqa: F811
+    rv = rid(world["main"], 1)
+    assert submit(client, world, "m1", rv, **full()).status_code == 200
+
+
+def test_students_never_receive_scores_anywhere(client, world, team):   # noqa: F811
+    rv = rid(world["main"], 1)
+    submit(client, world, "m1", rv, **full(), student_remarks=[{"student_id": team["s1"], "remarks": "Nice", "marks_obtained": 9},
+                                                                {"student_id": team["s4"], "remarks": "Hmm", "marks_obtained": 4}])
+    p = world["main"]
+    for who in ("s1", "s4"):
+        single = client.get(f"/api/reviews/{rv}", headers=world["H"][who]).get_json()["data"]
+        allr = client.get(f"/api/reviews/projects/{p.id}", headers=world["H"][who]).get_json()["data"]
+        text = str(single) + str(allr)
+        assert single["summary"] is None and set(allr["overall"]) == {"reviews_submitted", "reviews_total"}
+        for banned in ("marks_obtained", "max_marks", "total_obtained", "percentage", "individual_max_marks"):
+            assert banned not in text, banned
+        assert single["remarks"] == "Good work"                                          # but the written feedback is there
+    n = db.session.query(Notification).filter_by(type="review_completed").first()
+    assert "%" not in n.message and "/" not in n.message.replace("Open it", "")

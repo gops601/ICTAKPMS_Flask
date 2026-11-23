@@ -153,12 +153,14 @@ def test_import_confirmation_returns_full_shareable_details(client, make_user, l
     h = login("admin@x.com")
     ou = db.session.query(OrganisationalUnit).filter_by(code="RETAIL").one()
     dom = db.session.query(Domain).first()
-    assert client.post("/api/batches", headers=h, json={"code": "IMP-1", "name": "Import batch", "ou_id": ou.id, "domain_id": dom.id,
-                                                          "details": {"programme_name": "P"}}).status_code == 201
-    csv = "Student Name,Email,Phone Number,Registration Number,Batch Code\nAsha K,asha@x.com,9999999999,R1,IMP-1\n"
+    made = client.post("/api/batches", headers=h, json={"name": "Import batch", "ou_id": ou.id, "domain_id": dom.id,
+                                                          "details": {"programme_name": "P"}})
+    assert made.status_code == 201
+    code = made.get_json()["data"]["code"]  # batch IDs are system-generated
+    csv = f"Student Name,Email,Phone Number,Registration Number,Batch Code\nAsha K,asha@x.com,9999999999,R1,{code}\n"
     job = client.post("/api/imports/students", headers=h, content_type="multipart/form-data",
                       data={"ou_id": str(ou.id), "file": (io.BytesIO(csv.encode()), "s.csv")}).get_json()["data"]
     cred = client.post(f"/api/imports/{job['id']}/confirm", headers=h, json={}).get_json()["data"]["credentials"][0]
     assert (cred["name"], cred["email"], cred["phone"], cred["registration_no"], cred["batch_code"], cred["batch_name"]) == \
-        ("Asha K", "asha@x.com", "9999999999", "R1", "IMP-1", "Import batch")
+        ("Asha K", "asha@x.com", "9999999999", "R1", code, "Import batch")
     assert can_login(client, "asha@x.com", cred["temporary_password"])

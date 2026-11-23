@@ -33,7 +33,8 @@ vi.mock('./services/adminService', async () => {
   const actual = await vi.importActual('./services/adminService')
   return {
     ...actual,
-    projectService: { list: vi.fn(), get: vi.fn(), timeline: vi.fn(), transition: vi.fn(), reopen: vi.fn(), setMentor: vi.fn(), setBoardPermission: vi.fn(), reassignProblem: vi.fn(), allocate: vi.fn() },
+    feedbackService: { list: vi.fn().mockResolvedValue([]), send: vi.fn() },
+    projectService: { list: vi.fn(), get: vi.fn(), timeline: vi.fn(), transition: vi.fn(), close: vi.fn(), reopen: vi.fn(), setMentor: vi.fn(), setBoardPermission: vi.fn(), reassignProblem: vi.fn(), allocate: vi.fn() },
     batchService: { get: vi.fn(), list: vi.fn() },
     batchMentorService: { list: vi.fn(), assign: vi.fn(), remove: vi.fn(), reassign: vi.fn() },
     studentService: { list: vi.fn() },
@@ -184,12 +185,31 @@ describe('project view', () => {
     expect(svc.projectService.setMentor).toHaveBeenCalledWith(7, 10)
   })
 
-  it('lets a lead toggle mentor board editing', async () => {
+  it('no longer has a mentor board-editing toggle (mentors always change the board)', async () => {
     mockUser = { id: 3, name: 'Lea', role: 'domain_lead' }
-    svc.projectService.setBoardPermission.mockResolvedValue({})
     renderView()
-    await userEvent.click(await screen.findByLabelText(/allow the mentor/i))
-    expect(svc.projectService.setBoardPermission).toHaveBeenCalledWith(7, true)
+    await screen.findByText(/mentor feedback/i)
+    expect(screen.queryByLabelText(/allow the mentor/i)).not.toBeInTheDocument()
+  })
+
+  it('lets a lead close a completed project, and shows closed projects as closed', async () => {
+    mockUser = { id: 3, name: 'Lea', role: 'domain_lead' }
+    svc.projectService.get.mockResolvedValue({ ...PROJECT, stage: 'completed', stage_label: 'Completed', is_closed: false, available_actions: [] })
+    svc.projectService.close.mockResolvedValue({})
+    renderView()
+    await userEvent.click(await screen.findByRole('button', { name: /close project/i }))
+    const buttons = await screen.findAllByRole('button', { name: /close project/i })
+    await userEvent.click(buttons[buttons.length - 1]) // the dialog's confirm button
+    await waitFor(() => expect(svc.projectService.close).toHaveBeenCalledWith(7))
+  })
+
+  it('lets a mentor send feedback and hides the composer from students', async () => {
+    mockUser = { id: 4, name: 'Mia', role: 'mentor' }
+    svc.feedbackService.send.mockResolvedValue({})
+    renderView()
+    await userEvent.type(await screen.findByLabelText(/^feedback$/i), 'Great work')
+    await userEvent.click(screen.getByRole('button', { name: /send feedback/i }))
+    await waitFor(() => expect(svc.feedbackService.send).toHaveBeenCalledWith(7, 'Great work', null))
   })
 })
 
@@ -220,8 +240,8 @@ describe('allocation page', () => {
     expect(await screen.findByLabelText('Select Cara L')).toBeDisabled()
     expect(screen.getByText(/already allocated: existing project/i)).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /^allocate$/i }))
-    expect(await screen.findByRole('alert')).toHaveTextContent(/choose a problem statement/i)
-    await userEvent.selectOptions(screen.getByLabelText(/problem statement/i), '3')
+    expect(await screen.findByRole('alert')).toHaveTextContent(/choose a project/i)
+    await userEvent.selectOptions(screen.getByLabelText(/from the project shelf/i), '3')
     await userEvent.click(screen.getByRole('button', { name: /^allocate$/i }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/select at least one student/i)
     expect(svc.projectService.allocate).not.toHaveBeenCalled()
@@ -230,7 +250,7 @@ describe('allocation page', () => {
   it('sends a team allocation with selected students, mentor and start date', async () => {
     svc.projectService.allocate.mockResolvedValue([])
     renderPage()
-    await userEvent.selectOptions(await screen.findByLabelText(/problem statement/i), '3')
+    await userEvent.selectOptions(await screen.findByLabelText(/from the project shelf/i), '3')
     await userEvent.click(screen.getByLabelText('Select Asha K'))
     await userEvent.click(screen.getByLabelText('Select Ben J'))
     await userEvent.click(screen.getByLabelText(/one team project/i))
@@ -247,7 +267,7 @@ describe('allocation page', () => {
   it('selects all available students at once (skipping allocated ones)', async () => {
     svc.projectService.allocate.mockResolvedValue([])
     renderPage()
-    await userEvent.selectOptions(await screen.findByLabelText(/problem statement/i), '3')
+    await userEvent.selectOptions(await screen.findByLabelText(/from the project shelf/i), '3')
     await userEvent.click(screen.getByLabelText(/select all available/i))
     await userEvent.click(screen.getByRole('button', { name: /^allocate$/i }))
     await waitFor(() => expect(svc.projectService.allocate).toHaveBeenCalled())
@@ -257,7 +277,7 @@ describe('allocation page', () => {
   it('shows the server error when allocation is rejected', async () => {
     svc.projectService.allocate.mockRejectedValue({ response: { status: 422, data: { message: 'Allocation not possible: Asha K already has a project' } } })
     renderPage()
-    await userEvent.selectOptions(await screen.findByLabelText(/problem statement/i), '3')
+    await userEvent.selectOptions(await screen.findByLabelText(/from the project shelf/i), '3')
     await userEvent.click(screen.getByLabelText('Select Asha K'))
     await userEvent.click(screen.getByRole('button', { name: /^allocate$/i }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/already has a project/)
@@ -307,14 +327,14 @@ describe('batch detail mentors tab', () => {
     expect(svc.batchMentorService.reassign).toHaveBeenCalledWith(2, 9, 10)
   })
 
-  it('is read-only for mentors: no allocate, assign, reassign or remove controls', async () => {
+  it('lets mentors allocate but not assign/reassign/remove mentors', async () => {
     mockUser = { id: 4, name: 'Mia', role: 'mentor' }
     renderDetail()
     await userEvent.click(await screen.findByRole('tab', { name: 'Mentors' }))
     expect(await screen.findByText('Mia Mentor')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /assign mentor/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /reassign/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /allocate projects/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /allocate projects/i })).toBeInTheDocument()
   })
 
   it('shows the allocate button to leads of an active batch', async () => {
@@ -335,10 +355,10 @@ describe('role navigation', () => {
     return screen.findByRole('navigation', { name: /main navigation/i })
   }
   it.each([
-    ['domain_lead', '/lead', ['My Batches', 'Mentors', 'Projects', 'Problem Statements', 'Notifications']],
+    ['domain_lead', '/lead', ['My Batches', 'Mentors', 'Projects', 'Project Shelf', 'Notifications']],
     ['mentor', '/mentor', ['My Batches', 'My Projects', 'Notifications']],
     ['student', '/student', ['My Project', 'Notifications']],
-    ['admin', '/admin', ['Problem Statements', 'Projects', 'Domain Leads', 'Mentors', 'Notifications']],
+    ['admin', '/admin', ['Project Shelf', 'Projects', 'Domain Leads', 'Mentors', 'Notifications']],
   ])('%s sees their modules', async (role, path, labels) => {
     mockUser = { id: 1, name: 'U', role }
     const nav = await asRole(role, path)

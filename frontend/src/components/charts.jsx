@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, Cell, Legend, LabelList, Pie, PieChart, R
 
 /** Validated reference palette (categorical slots 1-3 pass the all-pairs gate; status colours are reserved for state). */
 export const COLORS = {
-  series: ['#2a78d6', '#eb6834', '#1baf7a'],
+  series: ['#9f1239', '#d97706', '#57534e'],
   good: '#0ca30c', critical: '#d03b3b', neutral: '#898781',
   grid: '#e1e0d9', axis: '#c3c2b7', ink: '#0b0b0b', inkSecondary: '#52514e', muted: '#898781',
 }
@@ -109,7 +109,7 @@ export function Donut({ slices }) {
 export function statusSlices(split) {
   return [
     { label: 'Completed', value: split.completed, color: COLORS.good, icon: <CheckCircle2 className="h-4 w-4 text-green-700" aria-hidden /> },
-    { label: 'Ongoing', value: split.ongoing, color: COLORS.series[0], icon: <CircleDot className="h-4 w-4 text-blue-700" aria-hidden /> },
+    { label: 'Ongoing', value: split.ongoing, color: COLORS.series[0], icon: <CircleDot className="h-4 w-4 text-rose-700" aria-hidden /> },
     { label: 'Delayed', value: split.delayed, color: COLORS.critical, icon: <AlertTriangle className="h-4 w-4 text-red-700" aria-hidden /> },
   ]
 }

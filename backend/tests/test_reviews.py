@@ -169,10 +169,10 @@ def test_submit_calculates_and_publishes_to_student(client, world):
     assert r.status_code == 200 and d["status"] == "submitted" and d["summary"]["percentage"] == 84.0
     assert d["submitted_at"] and d["review_date"] and d["mentor"] == "Mentor"
     s = client.get(f"/api/reviews/{rv}", headers=world["H"]["s1"]).get_json()["data"]
-    assert s["visible"] is True and s["summary"]["total_obtained"] == 84.0 and s["strengths"] == "Clear scope" and s["improvements"] == "More tests"
+    assert s["visible"] is True and s["summary"] is None and s["strengths"] == "Clear scope" and s["improvements"] == "More tests"
     assert s["permissions"]["can_edit"] is False and s["permissions"]["can_reopen"] is False
     n = db.session.query(Notification).filter_by(user_id=world["s1u"].id, type="review_completed").one()
-    assert "84/100" in n.message and "84%" in n.message
+    assert "remarks" in n.message and "84" not in n.message and "%" not in n.message   # no score in the student notification
 
 
 def test_submit_in_one_call_with_payload(client, world):
@@ -281,7 +281,7 @@ def test_reopen_is_controlled_snapshotted_and_audited(client, world):
     assert put(client, world, "m1", rv, criteria=crit).status_code == 200
     r = submit(client, world, "m1", rv)
     assert r.get_json()["data"]["summary"]["total_obtained"] == 89.0
-    assert client.get(f"/api/reviews/{rv}", headers=world["H"]["s1"]).get_json()["data"]["summary"]["total_obtained"] == 89.0
+    assert client.get(f"/api/reviews/{rv}", headers=world["H"]["s1"]).get_json()["data"]["summary"] is None
     revs = client.get(f"/api/reviews/{rv}/revisions", headers=world["H"]["la"]).get_json()["data"]
     assert len(revs) == 1 and revs[0]["changed_by"] == "Mentor" and revs[0]["snapshot"]["summary"]["total_obtained"] == 84.0
     assert client.get(f"/api/reviews/{rv}/revisions", headers=world["H"]["s1"]).status_code == 403

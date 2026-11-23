@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Download, KeyRound, Plus, Upload } from 'lucide-react'
-import { batchService, studentService } from '../../services/adminService'
+import { Download, KeyRound, Plus, Trash2, Upload } from 'lucide-react'
+import { batchService, studentService, userService } from '../../services/adminService'
 import { errorMessage, fieldErrors } from '../../services/api'
 import { useDebounced, useList } from '../../hooks/useList'
 import PageHeader from '../../components/PageHeader'
@@ -10,6 +10,7 @@ import Pagination from '../../components/Pagination'
 import Modal from '../../components/Modal'
 import Alert from '../../components/Alert'
 import { downloadCredentials, rowFromStudent } from '../../utils/credentials'
+import ConfirmDialog from '../../components/ConfirmDialog'
 
 function AddStudentModal({ batches, onClose, onSaved }) {
   const [form, setForm] = useState({ name: '', email: '', phone: '', registration_no: '', batch_id: '' })
@@ -49,7 +50,7 @@ function AddStudentModal({ batches, onClose, onSaved }) {
         <div><label htmlFor="s-name" className="label">Name *</label><input id="s-name" className="input" required value={form.name} onChange={set('name')} />{err('name')}</div>
         <div><label htmlFor="s-email" className="label">Email *</label><input id="s-email" type="email" className="input" required value={form.email} onChange={set('email')} />{err('email')}</div>
         <div><label htmlFor="s-phone" className="label">Phone</label><input id="s-phone" className="input" value={form.phone} onChange={set('phone')} /></div>
-        <div><label htmlFor="s-reg" className="label">Registration number *</label><input id="s-reg" className="input" required value={form.registration_no} onChange={set('registration_no')} /></div>
+        <div><label htmlFor="s-reg" className="label">Registration number</label><input id="s-reg" className="input" placeholder="Leave blank to auto-generate (ICT_STU_…)" value={form.registration_no} onChange={set('registration_no')} /></div>
         <div className="flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
           <button className="btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Create student'}</button>
@@ -125,6 +126,9 @@ export default function StudentManagement() {
   const [searchParams] = useSearchParams()
   const [adding, setAdding] = useState(searchParams.get('add') === '1')
   const [credentials, setCredentials] = useState(false)
+  const [deleting, setDeleting] = useState(null)
+  const [delBusy, setDelBusy] = useState(false)
+  const [delError, setDelError] = useState('')
   const dq = useDebounced(q)
 
   useEffect(() => { batchService.list({ per_page: 100, status: 'active' }).then((r) => setBatches(r.items)).catch(() => {}) }, [])
@@ -132,6 +136,11 @@ export default function StudentManagement() {
     q: dq, batch_id: batchId || undefined, page, sort: sort.key, order: sort.order,
   })
   const onSort = (key) => setSort((s) => ({ key, order: s.key === key && s.order === 'asc' ? 'desc' : 'asc' }))
+  const doDelete = async () => {
+    setDelBusy(true); setDelError('')
+    try { await userService.remove(deleting.user_id); setDeleting(null); reload() }
+    catch (e) { setDelError(errorMessage(e)); setDeleting(null) } finally { setDelBusy(false) }
+  }
 
   return (
     <div>
@@ -148,16 +157,19 @@ export default function StudentManagement() {
             <option value="">All batches</option>{batches.map((b) => <option key={b.id} value={b.id}>{b.code} – {b.name}</option>)}
           </select>
         </div>
-        <Alert>{error}</Alert>
+        <Alert>{error || delError}</Alert>
         <DataTable loading={loading} rows={items} sort={sort} onSort={onSort} columns={[
           { key: 'name', header: 'Name', sortKey: 'name' },
           { key: 'email', header: 'Email' },
           { key: 'registration_no', header: 'Reg. no', sortKey: 'registration_no' },
           { key: 'batch', header: 'Batch', render: (s) => s.batch.code },
           { key: 'phone', header: 'Phone', render: (s) => s.phone || '—' },
+          { key: 'actions', header: '', render: (s) => <button className="btn-secondary" onClick={() => { setDelError(''); setDeleting(s) }} aria-label={`Delete ${s.name}`}><Trash2 className="h-4 w-4" />Delete</button> },
         ]} />
         <Pagination meta={meta} onPage={setPage} />
       </div>
+      {deleting && <ConfirmDialog danger confirmLabel="Delete permanently" busy={delBusy} onConfirm={doDelete} onCancel={() => setDeleting(null)}
+        message={`Permanently delete ${deleting.name} (${deleting.registration_no})? This cannot be undone. Students who already have a project cannot be deleted; deactivate them instead.`} />}
       {credentials && <CredentialsModal batches={batches} onClose={() => setCredentials(false)} />}
       {adding && <AddStudentModal batches={batches} onClose={() => setAdding(false)} onSaved={() => { setAdding(false); reload() }} />}
     </div>

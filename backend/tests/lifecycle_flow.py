@@ -84,7 +84,7 @@ def run(call, admin_email, admin_password, tag="x"):
             ok(14, call("PATCH", f"/api/scrum/tasks/{t['id']}/move", stu_t, {"status": status}))
     # 15. Mentor views the Scrum board
     board = ok(15, call("GET", f"/api/scrum/projects/{pid}/board", mentor_t))
-    assert board["stats"]["completed"] == 3 and board["permissions"]["can_comment"] and not board["permissions"]["can_move"]
+    assert board["stats"]["completed"] == 3 and board["permissions"]["can_comment"] and board["permissions"]["can_move"]  # mentors can change the board
 
     # 16. Mentor completes the Week 1 evaluation   17. Student views it
     reviews = ok(16, call("GET", f"/api/reviews/projects/{pid}", mentor_t))["reviews"]
@@ -94,7 +94,8 @@ def run(call, admin_email, admin_password, tag="x"):
                        {"criteria": criteria, "remarks": "Strong start", "strengths": "Clear scope", "improvements": "Add use cases"}))
     assert done["summary"] == {"total_obtained": 43.0, "total_max": 50.0, "percentage": 86.0, "criteria_count": 2, "scored_count": 2}
     seen = ok(17, call("GET", f"/api/reviews/{reviews[0]['id']}", stu_t))
-    assert seen["visible"] and seen["summary"]["percentage"] == 86.0 and seen["improvements"] == "Add use cases"
+    assert seen["visible"] and seen["summary"] is None and seen["improvements"] == "Add use cases"  # remarks only, no scores
+    assert all("marks_obtained" not in c and "max_marks" not in c for c in seen["criteria"])
     hidden = ok(17, call("GET", f"/api/reviews/{reviews[1]['id']}", stu_t))
     assert hidden["visible"] is False
 
@@ -102,7 +103,7 @@ def run(call, admin_email, admin_password, tag="x"):
     for r in reviews[1:]:
         ok(18, call("POST", f"/api/reviews/{r['id']}/submit", mentor_t, {"criteria": [{"name": f"Week {r['week_no']} work", "max_marks": 100, "marks_obtained": 80}], "remarks": "On track"}))
     overall = ok(18, call("GET", f"/api/reviews/projects/{pid}", stu_t))["overall"]
-    assert overall["reviews_submitted"] == 4 and overall["total_max"] == 350.0
+    assert overall == {"reviews_submitted": 4, "reviews_total": 4}   # students see progress, never scores
 
     # 19. Final evaluation is completed (needs all reviews + mandatory sign-off)
     st, _ = call("POST", f"/api/projects/{pid}/transition", mentor_t, {"to": "completed"})

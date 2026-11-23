@@ -35,7 +35,7 @@ export default function Notifications() {
             {items.length === 0 && <li><EmptyState title="No notifications." /></li>}
             {items.map((n) => (
               <li key={n.id}>
-                <button onClick={() => open(n)} className={`flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-slate-50 ${n.is_read ? '' : 'bg-blue-50/60'}`}>
+                <button onClick={() => open(n)} className={`flex w-full items-start gap-3 px-5 py-3 text-left hover:bg-slate-50 ${n.is_read ? '' : 'bg-rose-50/60'}`}>
                   <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.is_read ? 'bg-transparent' : 'bg-brand'}`} aria-label={n.is_read ? 'read' : 'unread'} />
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-slate-900">{n.title}</span>

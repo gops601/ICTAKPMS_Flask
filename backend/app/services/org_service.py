@@ -2,8 +2,9 @@
 import re
 
 from app.extensions import db
-from app.models import (Batch, BatchOUDetail, Domain, DomainLead, OrganisationalUnit, OUCustomField,
+from app.models import (Subdomain, Batch, BatchOUDetail, Domain, DomainLead, OrganisationalUnit, OUCustomField,
                         Student, User)
+from app.utils.ids import generate_id
 from app.services.fields import FIELD_TYPES, parse_date, validate_custom_value
 from app.utils.errors import AppError, NotFound
 
@@ -105,6 +106,31 @@ def update_domain(domain, name=None, description=None):
     if description is not None:
         domain.description = description
     return domain
+
+
+def add_subdomain(domain, name):
+    name = (name or "").strip()
+    if len(name) < 2:
+        raise AppError("Subdomain name is required", 422, {"name": "At least 2 characters"})
+    if db.session.query(Subdomain).filter(Subdomain.domain_id == domain.id,
+                                          db.func.lower(Subdomain.name) == name.lower()).first():
+        raise AppError(f"'{name}' already exists in {domain.name}", 409, {"name": "Already exists in this domain"})
+    sd = Subdomain(domain_id=domain.id, name=name)
+    db.session.add(sd)
+    db.session.flush()
+    return sd
+
+
+def update_subdomain(sd, name=None, is_active=None):
+    if name is not None:
+        name = name.strip()
+        if db.session.query(Subdomain).filter(Subdomain.domain_id == sd.domain_id, Subdomain.id != sd.id,
+                                              db.func.lower(Subdomain.name) == name.lower()).first():
+            raise AppError(f"'{name}' already exists in this domain", 409, {"name": "Already exists in this domain"})
+        sd.name = name
+    if is_active is not None:
+        sd.is_active = is_active
+    return sd
 
 
 def get_domain(domain_id):
@@ -209,7 +235,16 @@ def _apply_details(batch, ou, details):
             batch.ou_details.append(BatchOUDetail(field_id=field.id, value=value))
 
 
+def new_batch_code(domain_id):
+    """System-issued batch ID: ICT_<DOMAIN SHORT CODE>_<6 mixed letters/digits>, e.g. ICT_AIML_7K3Q9X."""
+    domain = db.session.get(Domain, domain_id) if domain_id else None
+    kind = re.sub(r"[^A-Za-z0-9]", "", domain.code).upper() if domain else "BATCH"
+    return generate_id(kind, lambda c: _ci_exists(Batch, Batch.code, c))
+
+
 def create_batch(data):
+    # The batch ID is always system-generated (any code sent by the client is ignored).
+    data = {**data, "code": new_batch_code(data.get("domain_id"))}
     ou = get_ou(data["ou_id"])
     if not ou.is_active:
         raise AppError("Cannot create a batch under an inactive OU", 422)
@@ -229,6 +264,7 @@ def build_batch(ou, clean):
 
 
 def update_batch(batch, data):
+    data = {k: v for k, v in data.items() if k != "code"}  # the generated batch ID never changes
     if data.get("ou_id") and data["ou_id"] != batch.ou_id:
         raise AppError("A batch's OU cannot be changed after creation", 422)
     merged = {"code": batch.code, "name": batch.name, "domain_id": batch.domain_id,
@@ -259,6 +295,26 @@ def set_project_dates(batch, start_raw, end_raw):
         raise AppError("Validation failed", 422, errors)
     batch.project_start_date, batch.project_end_date = start, end
     return batch
+
+
+def delete_batch(batch, actor, with_students=False):
+    """Permanently delete a batch. Refused while it has projects (that would destroy project work); students must be
+    removed first unless `with_students` is set, which also deletes their accounts. Returns what was removed."""
+    from app.models import Project
+    from app.services import user_service
+    projects = db.session.query(Project).filter_by(batch_id=batch.id).count()
+    if projects:
+        raise AppError(f"This batch has {projects} project(s). Close the batch instead of deleting it.", 409)
+    students = db.session.query(Student).filter_by(batch_id=batch.id).all()
+    if students and not with_students:
+        raise AppError(f"This batch has {len(students)} student(s). Delete them first, or choose to delete them with the batch.", 409,
+                       {"student_count": len(students)})
+    for s in students:
+        user_service.delete_user(s.user, actor)
+    info = {"code": batch.code, "name": batch.name, "students_deleted": len(students)}
+    db.session.delete(batch)  # batch mentors and OU detail values cascade
+    db.session.flush()
+    return info
 
 
 def set_batch_status(batch, status):

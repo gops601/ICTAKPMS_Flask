@@ -4,9 +4,13 @@ const fmtNum = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0
 const toneFor = (pct) => (pct >= 75 ? 'green' : pct >= 50 ? 'orange' : 'red')
 const FEEDBACK = [['remarks', 'Overall feedback'], ['strengths', 'Strengths'], ['improvements', 'Areas for improvement'], ['recommendations', 'Recommendations']]
 
-/** Read-only evaluation: criteria, maximum, obtained, percentage and the mentor's written feedback. */
+/**
+ * Read-only evaluation. Mentors, leads and admins see criteria, marks and the per-student evaluation;
+ * students (review.summary === null) only see the mentor's remarks, never any score.
+ */
 export default function ReviewDetail({ review }) {
   const s = review.summary
+  if (!s) return <StudentReviewDetail review={review} />
   return (
     <div className="space-y-4" aria-label={`Week ${review.week_no} evaluation`}>
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-500">
@@ -32,11 +36,13 @@ export default function ReviewDetail({ review }) {
           <tr><td className="py-2 pr-3">Total</td><td className="px-3 py-2">{fmtNum(s.total_max)}</td><td className="px-3 py-2">{fmtNum(s.total_obtained)}</td><td className="px-3 py-2">{fmtNum(s.percentage)}%</td></tr>
         </tfoot>
       </table>
-      {(review.student_remarks || []).some((s) => s.remarks) && (
-        <section className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-3" aria-label="Remarks for students">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Remarks for each student</h4>
+      {(review.student_remarks || []).some((x) => x.remarks || x.marks_obtained != null) && (
+        <section className="rounded-lg border border-rose-100 bg-rose-50/60 p-3" aria-label="Individual evaluation">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-rose-700">Individual evaluation{review.individual_max_marks ? ` (out of ${fmtNum(review.individual_max_marks)})` : ''}</h4>
           <ul className="mt-1 space-y-1 text-sm text-slate-800">
-            {review.student_remarks.filter((s) => s.remarks).map((s) => <li key={s.student_id}><span className="font-medium">{s.name}:</span> {s.remarks}</li>)}
+            {review.student_remarks.filter((x) => x.remarks || x.marks_obtained != null).map((x) => (
+              <li key={x.student_id}><span className="font-medium">{x.name}</span>{x.marks_obtained != null && <span className="ml-2 rounded bg-white px-1.5 py-0.5 text-xs font-semibold ring-1 ring-rose-200">{fmtNum(x.marks_obtained)}</span>}{x.remarks ? `: ${x.remarks}` : ''}</li>
+            ))}
           </ul>
         </section>
       )}
@@ -48,6 +54,37 @@ export default function ReviewDetail({ review }) {
           </section>
         ))}
       </div>
+    </div>
+  )
+}
+
+/** What a student sees: the mentor's written feedback only. No marks, totals or percentages. */
+function StudentReviewDetail({ review }) {
+  const mine = (review.student_remarks || []).find((x) => x.remarks)
+  const criterionRemarks = (review.criteria || []).filter((c) => c.remarks)
+  return (
+    <div className="space-y-4" aria-label={`Week ${review.week_no} remarks`}>
+      <div className="text-sm text-slate-500">{review.mentor ? `Reviewed by ${review.mentor}` : 'Reviewed'}{review.review_date ? ` · ${review.review_date}` : ''}</div>
+      {mine && (
+        <section className="rounded-lg border border-rose-100 bg-rose-50/60 p-3" aria-label="Your remarks">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-rose-700">Your individual remarks</h4>
+          <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{mine.remarks}</p>
+        </section>
+      )}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {FEEDBACK.filter(([k]) => review[k]).map(([k, label]) => (
+          <section key={k} className="rounded-lg bg-slate-50 p-3" aria-label={label}>
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</h4>
+            <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{review[k]}</p>
+          </section>
+        ))}
+      </div>
+      {criterionRemarks.length > 0 && (
+        <section className="rounded-lg bg-slate-50 p-3" aria-label="Remarks by area">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Remarks by area</h4>
+          <ul className="mt-1 space-y-1 text-sm text-slate-800">{criterionRemarks.map((c) => <li key={c.id}><span className="font-medium">{c.name}:</span> {c.remarks}</li>)}</ul>
+        </section>
+      )}
     </div>
   )
 }

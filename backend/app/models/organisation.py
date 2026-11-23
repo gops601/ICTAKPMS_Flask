@@ -43,6 +43,20 @@ class Domain(TimestampMixin, db.Model):
 
     leads = db.relationship("DomainLead", back_populates="domain", cascade="all, delete-orphan")
     batches = db.relationship("Batch", back_populates="domain")
+    subdomains = db.relationship("Subdomain", back_populates="domain", cascade="all, delete-orphan",
+                                 order_by="Subdomain.name")
+
+
+class Subdomain(TimestampMixin, db.Model):
+    """A specialisation within a domain (e.g. Computer Vision inside AI & ML). Problem statements pick one."""
+    __tablename__ = "subdomains"
+    __table_args__ = (db.UniqueConstraint("domain_id", "name", name="uq_subdomain_name"),)
+    id = db.Column(db.Integer, primary_key=True)
+    domain_id = db.Column(db.Integer, db.ForeignKey("domains.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    domain = db.relationship("Domain", back_populates="subdomains")
 
 
 class DomainLead(TimestampMixin, db.Model):

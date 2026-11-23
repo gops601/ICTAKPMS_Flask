@@ -111,13 +111,21 @@ def test_batch_validation_errors(client, admin):
     r = client.post("/api/batches", headers=admin, json=bad)
     errs = r.get_json()["errors"]
     assert r.status_code == 422
-    assert {"code", "name", "end_date", "details.bogus", "details.university"} <= set(errs)
+    assert {"name", "end_date", "details.bogus", "details.university"} <= set(errs)
+    assert "code" not in errs  # a blank batch code is replaced by a generated ICT_BATCH_ id
 
 
-def test_duplicate_batch_code_case_insensitive(client, admin):
-    assert client.post("/api/batches", headers=admin, json=batch_body()).status_code == 201
-    r = client.post("/api/batches", headers=admin, json=batch_body(code="b-001"))
-    assert r.status_code == 422 and "code" in r.get_json()["errors"]
+def test_batch_id_is_generated_from_the_domain_short_code(client, admin):
+    import re
+    a = client.post("/api/batches", headers=admin, json=batch_body()).get_json()["data"]
+    b = client.post("/api/batches", headers=admin, json=batch_body(code="B-001")).get_json()["data"]  # supplied code is ignored
+    c = client.post("/api/batches", headers=admin, json=batch_body(domain_id=domain("IOT").id)).get_json()["data"]
+    assert re.fullmatch(r"ICT_AIML_[A-Z2-9]{6}", a["code"]) and re.fullmatch(r"ICT_AIML_[A-Z2-9]{6}", b["code"])
+    assert re.fullmatch(r"ICT_IOT_[A-Z2-9]{6}", c["code"]) and a["code"] != b["code"]
+    assert a["code"] != "B-001"
+    # the ID never changes, even when the batch is edited or moved to another domain
+    r = client.put(f"/api/batches/{a['id']}", headers=admin, json={"code": "HACK", "name": "Renamed", "domain_id": domain("IOT").id})
+    assert r.status_code == 200 and r.get_json()["data"]["code"] == a["code"]
 
 
 def test_update_batch_cannot_change_ou_and_can_change_domain(client, admin):
@@ -139,14 +147,14 @@ def test_batch_close_and_filter(client, admin):
 
 
 def test_batch_list_scoped_by_role(client, admin, make_user, login):
-    client.post("/api/batches", headers=admin, json=batch_body())
-    client.post("/api/batches", headers=admin, json=batch_body(code="B-002", domain_id=domain("IOT").id))
+    mine = client.post("/api/batches", headers=admin, json=batch_body()).get_json()["data"]["code"]
+    theirs = client.post("/api/batches", headers=admin, json=batch_body(domain_id=domain("IOT").id)).get_json()["data"]["code"]
     lead = make_user("domain_lead", "lead@x.com")
     client.put(f"/api/domains/{domain('AIML').id}/leads", headers=admin, json={"user_ids": [lead.id]})
     h = login("lead@x.com")
     codes = [b["code"] for b in client.get("/api/batches", headers=h).get_json()["data"]]
-    assert codes == ["B-001"]
-    other = db.session.query(Batch).filter_by(code="B-002").one().id
+    assert codes == [mine]
+    other = db.session.query(Batch).filter_by(code=theirs).one().id
     assert client.get(f"/api/batches/{other}", headers=h).status_code == 404
     assert client.post("/api/batches", headers=h, json=batch_body(code="X")).status_code == 403
 

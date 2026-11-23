@@ -38,7 +38,7 @@ vi.mock('./services/adminService', async () => {
 })
 
 const crit = (id, name, max, got = null) => ({ id, name, max_marks: max, marks_obtained: got, remarks: null })
-const REMARKS = [{ student_id: 1, name: 'Asha K', registration_no: 'R1', remarks: 'Led the design' }, { student_id: 2, name: 'Ben J', registration_no: 'R2', remarks: '' }]
+const REMARKS = [{ student_id: 1, name: 'Asha K', registration_no: 'R1', remarks: 'Led the design', marks_obtained: 8 }, { student_id: 2, name: 'Ben J', registration_no: 'R2', remarks: '', marks_obtained: null }]
 const review = (over = {}) => ({
   id: 11, project_id: 7, week_no: 1, due_date: '2026-03-09', is_overdue: false, status: 'draft', status_label: 'In progress', version: 2, visible: true,
   review_date: null, mentor: 'Mia Mentor', remarks: 'Solid', strengths: null, improvements: null, recommendations: null,
@@ -60,13 +60,14 @@ describe('remarks for every student (mentor)', () => {
     svc.reviewService.save.mockResolvedValue(review({ version: 3 }))
     render(<ReviewEditor review={review()} onChange={vi.fn()} />)
     const region = screen.getByLabelText('Remarks for each student')
-    expect(within(region).getByText(/each student sees only their own remark/i)).toBeInTheDocument()
+    expect(within(region).getByText(/never any marks/i)).toBeInTheDocument()
+    expect(within(region).getByLabelText('Individual marks for Asha K')).toHaveValue(8)
     expect(within(region).getByLabelText('Remarks for Asha K')).toHaveValue('Led the design')
     await userEvent.type(within(region).getByLabelText('Remarks for Ben J'), 'Needs to commit more code')
     await userEvent.click(screen.getByRole('button', { name: /save draft/i }))
     await waitFor(() => expect(svc.reviewService.save).toHaveBeenCalled())
     expect(svc.reviewService.save.mock.calls[0][1].student_remarks).toEqual([
-      { student_id: 1, remarks: 'Led the design' }, { student_id: 2, remarks: 'Needs to commit more code' }])
+      { student_id: 1, remarks: 'Led the design', marks_obtained: 8 }, { student_id: 2, remarks: 'Needs to commit more code', marks_obtained: null }])
   })
 
   it('submits the individual remarks in the same call as the scores', async () => {
@@ -92,16 +93,20 @@ describe('remarks for every student (mentor)', () => {
 
   it('read-only detail shows each non-empty remark with the student name', () => {
     render(<ReviewDetail review={submitted()} />)
-    const box = screen.getByRole('region', { name: 'Remarks for students' })
-    expect(within(box).getByText('Asha K:')).toBeInTheDocument()
+    const box = screen.getByRole('region', { name: 'Individual evaluation' })
+    expect(within(box).getByText('Asha K')).toBeInTheDocument()
     expect(within(box).getByText(/Led the design/)).toBeInTheDocument()
     expect(within(box).queryByText('Ben J:')).not.toBeInTheDocument()          // empty remarks are not shown
   })
 
   it('a student only receives (and sees) their own remark', () => {
-    render(<ReviewDetail review={submitted({ student_remarks: [REMARKS[0]] })} />)
+    // students receive summary: null and no marks anywhere
+    render(<ReviewDetail review={submitted({ summary: null, student_remarks: [{ student_id: 1, name: 'Asha K', registration_no: 'R1', remarks: 'Led the design' }],
+      criteria: [{ id: 1, name: 'Design', remarks: 'Clean structure' }] })} />)
     expect(screen.getByText(/Led the design/)).toBeInTheDocument()
+    expect(screen.getByText(/Clean structure/)).toBeInTheDocument()
     expect(screen.queryByText(/Ben J/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Obtained|Max|%/)).not.toBeInTheDocument()
   })
 
   it('hides the section when there are no remarks', () => {

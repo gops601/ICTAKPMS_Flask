@@ -57,21 +57,21 @@ const inRoutes = (path, el, routePath) =>
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path={routePath} element={el} />
-        <Route path="/lead/problem-statements/:id/edit" element={<div>Edit page</div>} />
+        <Route path="/lead/project-shelf/:id/edit" element={<div>Edit page</div>} />
       </Routes>
     </MemoryRouter>,
   )
 
-describe('problem statement form', () => {
+describe('project shelf form', () => {
   const fillBasics = async () => {
-    await userEvent.type(await screen.findByLabelText(/problem statement id/i), 'PS-9')
+    await userEvent.type(await screen.findByLabelText(/^project id/i), 'PS-9')
     await userEvent.type(screen.getByLabelText(/project title/i), 'Chatbot')
     await userEvent.selectOptions(screen.getByLabelText(/^domain/i), '5')
   }
 
   it('submits rich text from the editor and moves to the edit page for attachments', async () => {
     admin.psService.create.mockResolvedValue({ id: 9 })
-    inRoutes('/lead/problem-statements/new', <ProblemStatementForm />, '/lead/problem-statements/new')
+    inRoutes('/lead/project-shelf/new', <ProblemStatementForm />, '/lead/project-shelf/new')
     await fillBasics()
     const editor = screen.getByRole('textbox', { name: 'Project description' })
     editor.innerHTML = '<p>Hello <b>world</b></p>'
@@ -88,7 +88,7 @@ describe('problem statement form', () => {
     admin.psService.create.mockRejectedValue({
       response: { status: 422, data: { message: 'Validation failed', errors: { ps_code: "Problem statement ID 'PS-9' already exists", description: 'Provide a project description or a problem definition' } } },
     })
-    inRoutes('/lead/problem-statements/new', <ProblemStatementForm />, '/lead/problem-statements/new')
+    inRoutes('/lead/project-shelf/new', <ProblemStatementForm />, '/lead/project-shelf/new')
     await fillBasics()
     await userEvent.click(screen.getByRole('button', { name: /create & add files/i }))
     expect((await screen.findAllByText(/already exists/)).length).toBeGreaterThan(0)
@@ -97,9 +97,9 @@ describe('problem statement form', () => {
   })
 
   it('loads an existing record, locks the ID and shows attachment panels', async () => {
-    inRoutes('/lead/problem-statements/3/edit', <ProblemStatementForm />, '/lead/problem-statements/:id/edit')
+    inRoutes('/lead/project-shelf/3/edit', <ProblemStatementForm />, '/lead/project-shelf/:id/edit')
     expect(await screen.findByDisplayValue('Smart Attendance')).toBeInTheDocument()
-    expect(screen.getByLabelText(/problem statement id/i)).toBeDisabled()
+    expect(screen.getByLabelText(/^project id/i)).toBeDisabled()
     expect(screen.getByRole('textbox', { name: 'Project description' }).innerHTML).toContain('<b>it</b>')
     expect(screen.getByText('train.csv')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Reference documents' })).toBeInTheDocument()
@@ -158,7 +158,7 @@ describe('attachments (file upload)', () => {
 
 describe('problem statement detail & list', () => {
   it('renders sanitised sections and the edit link only when permitted', async () => {
-    inRoutes('/lead/problem-statements/3', <ProblemStatementDetail />, '/lead/problem-statements/:id')
+    inRoutes('/lead/project-shelf/3', <ProblemStatementDetail />, '/lead/project-shelf/:id')
     expect(await screen.findByRole('heading', { name: 'Smart Attendance' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Project objectives' })).toHaveTextContent('Goal')
     expect(screen.queryByRole('region', { name: 'Scope' })).not.toBeInTheDocument() // empty sections hidden
@@ -167,7 +167,7 @@ describe('problem statement detail & list', () => {
 
   it('hides Edit for read-only viewers', async () => {
     admin.psService.get.mockResolvedValue({ ...PS, can_edit: false })
-    inRoutes('/lead/problem-statements/3', <ProblemStatementDetail />, '/lead/problem-statements/:id')
+    inRoutes('/lead/project-shelf/3', <ProblemStatementDetail />, '/lead/project-shelf/:id')
     await screen.findByRole('heading', { name: 'Smart Attendance' })
     expect(screen.queryByRole('link', { name: /edit/i })).not.toBeInTheDocument()
   })
@@ -175,7 +175,7 @@ describe('problem statement detail & list', () => {
   it('lists statements and toggles status after confirmation', async () => {
     admin.psService.list.mockResolvedValue({ items: [{ ...PS, dataset_count: 1, document_count: 0 }], meta: { page: 1, pages: 1, total: 1 } })
     admin.psService.setStatus.mockResolvedValue({})
-    inRoutes('/lead/problem-statements', <ProblemStatementList />, '/lead/problem-statements')
+    inRoutes('/lead/project-shelf', <ProblemStatementList />, '/lead/project-shelf')
     expect(await screen.findByText('Smart Attendance')).toBeInTheDocument()
     expect(screen.getByText('1 datasets · 0 docs')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /^deactivate$/i }))
@@ -201,19 +201,19 @@ describe('problem statement bulk upload wizard', () => {
 })
 
 describe('navigation', () => {
-  it('shows problem statement links for domain leads and admins only', async () => {
+  it('shows Project Shelf links for domain leads, admins and mentors', async () => {
     localStorage.setItem('plms_access', 'tok')
     api.get.mockResolvedValueOnce({ data: { data: { id: 1, name: 'Lea', email: 'l@x.com', role: 'domain_lead', must_change_password: false } } })
     render(<MemoryRouter initialEntries={['/lead']}><AuthProvider><App /></AuthProvider></MemoryRouter>)
     const nav = await screen.findByRole('navigation', { name: /main navigation/i })
-    expect(nav).toHaveTextContent('Problem Statements')
+    expect(nav).toHaveTextContent('Project Shelf')
     expect(nav).toHaveTextContent('Bulk Upload')
   })
 
   it('keeps students out of problem statement management routes', async () => {
     localStorage.setItem('plms_access', 'tok')
     api.get.mockResolvedValueOnce({ data: { data: { id: 2, name: 'Stu', email: 's@x.com', role: 'student', must_change_password: false } } })
-    render(<MemoryRouter initialEntries={['/lead/problem-statements']}><AuthProvider><App /></AuthProvider></MemoryRouter>)
+    render(<MemoryRouter initialEntries={['/lead/project-shelf']}><AuthProvider><App /></AuthProvider></MemoryRouter>)
     expect(await screen.findByText(/welcome, stu/i)).toBeInTheDocument()
   })
 })

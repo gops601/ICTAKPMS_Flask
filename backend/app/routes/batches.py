@@ -1,4 +1,5 @@
 from flask import request
+from sqlalchemy.exc import IntegrityError
 from flask_smorest import Blueprint
 
 from app.extensions import db
@@ -9,7 +10,7 @@ from app.schemas.org import BatchSchema, BatchUpdateSchema, ProjectDatesSchema, 
 from app.schemas.project import BatchMentorSchema, ReassignMentorSchema
 from app.services import org_service, project_service
 from app.utils.audit import audit
-from app.utils.errors import NotFound
+from app.utils.errors import AppError, NotFound
 from app.utils.responses import ok
 
 bp = Blueprint("batches", __name__, url_prefix="/api/batches", description="Batches")
@@ -101,6 +102,23 @@ def set_project_dates(data, batch_id):
     audit(user.id, "batch.project_dates", "batch", batch.id, data)
     db.session.commit()
     return ok(batch_to_dict(batch, org_service.batch_student_count(batch.id)), "Project dates saved")
+
+
+@bp.delete("/<int:batch_id>")
+@bp.doc(security=SEC, description="Admin only. Refused (409) while the batch has projects; students must be deleted first "
+                                  "or with ?with_students=1 (which also deletes their accounts).")
+@roles_required("admin")
+def delete_batch(batch_id):
+    user = current_user()
+    batch = org_service.get_batch_or_404(batch_id)
+    try:
+        info = org_service.delete_batch(batch, user, with_students=request.args.get("with_students") in ("1", "true"))
+        audit(user.id, "batch.delete", "batch", batch_id, info)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        raise AppError("This batch is still referenced by other records. Close it instead.", 409)
+    return ok(message=f"Batch {info['code']} was deleted")
 
 
 @bp.patch("/<int:batch_id>/status")

@@ -61,7 +61,7 @@ def project_to_dict(p, detail=False, role=None):
     mentors = project_service.mentors_for_project(p)
     reasons = project_service.delay_reasons(p)
     out = {
-        "id": p.id, "title": p.title, "stage": p.stage, "stage_label": lifecycle.LABELS[p.stage],
+        "id": p.id, "code": p.code, "title": p.title, "stage": p.stage, "stage_label": lifecycle.LABELS[p.stage],
         "batch": {"id": p.batch.id, "code": p.batch.code, "name": p.batch.name,
                   "domain": {"id": p.batch.domain.id, "name": p.batch.domain.name} if p.batch.domain else None},
         "problem_statement": {"id": p.problem_statement.id, "ps_code": p.problem_statement.ps_code,
@@ -73,7 +73,7 @@ def project_to_dict(p, detail=False, role=None):
         "start_date": _iso(p.start_date), "target_end_date": _iso(p.target_end_date),
         "progress": project_service.compute_progress(p), "is_delayed": bool(reasons), "delay_reasons": reasons,
         "mentor_can_edit_board": p.mentor_can_edit_board,
-        "completed_at": _iso(p.completed_at),
+        "completed_at": _iso(p.completed_at), "closed_at": _iso(p.closed_at), "is_closed": p.closed_at is not None,
         "srs_status": srs_service.srs_status(p),
         "implementation_unlocked": srs_service.implementation_unlocked(p),
     }

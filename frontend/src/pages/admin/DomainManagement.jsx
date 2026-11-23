@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Pencil, Plus, Users } from 'lucide-react'
+import { Layers, Pencil, Plus, Users } from 'lucide-react'
 import { domainService, userService } from '../../services/adminService'
 import { errorMessage, fieldErrors } from '../../services/api'
 import PageHeader from '../../components/PageHeader'
@@ -91,12 +91,72 @@ function LeadsModal({ domain, onClose, onSaved }) {
   )
 }
 
+/** Add, rename and (de)activate the subdomains of one domain. Project Shelf entries pick from these. */
+export function SubdomainsModal({ domain, onClose, onChanged }) {
+  const [subs, setSubs] = useState(domain.subdomains || [])
+  const [name, setName] = useState('')
+  const [editing, setEditing] = useState(null) // { id, name }
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const run = async (fn) => {
+    setBusy(true); setError('')
+    try { await fn(); onChanged() } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
+  }
+  const add = (e) => {
+    e.preventDefault()
+    run(async () => { const sd = await domainService.addSubdomain(domain.id, name); setSubs((s) => [...s, sd].sort((a, b) => a.name.localeCompare(b.name))); setName('') })
+  }
+  const rename = () => run(async () => {
+    const sd = await domainService.updateSubdomain(editing.id, { name: editing.name })
+    setSubs((s) => s.map((x) => (x.id === sd.id ? sd : x))); setEditing(null)
+  })
+  const toggleActive = (sd) => run(async () => {
+    const upd = await domainService.updateSubdomain(sd.id, { is_active: !sd.is_active })
+    setSubs((s) => s.map((x) => (x.id === upd.id ? upd : x)))
+  })
+
+  return (
+    <Modal title={`Subdomains – ${domain.name}`} onClose={onClose} footer={<button className="btn-primary" onClick={onClose}>Done</button>}>
+      <div className="space-y-3">
+        <Alert>{error}</Alert>
+        <form onSubmit={add} className="flex gap-2">
+          <input className="input" required minLength={2} placeholder="e.g. Computer Vision" aria-label="New subdomain name" value={name} onChange={(e) => setName(e.target.value)} />
+          <button className="btn-primary shrink-0" disabled={busy}><Plus className="h-4 w-4" />Add</button>
+        </form>
+        {subs.length === 0 && <p className="text-sm text-slate-500">No subdomains yet. Once you add one, every project on the shelf for this domain must choose a subdomain.</p>}
+        <ul className="divide-y divide-slate-100">
+          {subs.map((sd) => (
+            <li key={sd.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+              {editing?.id === sd.id ? (
+                <>
+                  <input className="input" aria-label={`Rename ${sd.name}`} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+                  <div className="flex gap-2"><button className="btn-primary" disabled={busy} onClick={rename}>Save</button><button className="btn-secondary" onClick={() => setEditing(null)}>Cancel</button></div>
+                </>
+              ) : (
+                <>
+                  <span className={sd.is_active ? 'font-medium' : 'text-slate-400 line-through'}>{sd.name}</span>
+                  <div className="flex gap-2">
+                    <button className="btn-secondary" onClick={() => setEditing({ id: sd.id, name: sd.name })}><Pencil className="h-4 w-4" />Rename</button>
+                    <button className="btn-secondary" disabled={busy} onClick={() => toggleActive(sd)}>{sd.is_active ? 'Deactivate' : 'Activate'}</button>
+                  </div>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Modal>
+  )
+}
+
 export default function DomainManagement() {
   const [domains, setDomains] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState(null)
   const [leadsFor, setLeadsFor] = useState(null)
+  const [subsFor, setSubsFor] = useState(null)
   const [toggle, setToggle] = useState(null)
   const [busy, setBusy] = useState(false)
 
@@ -122,6 +182,7 @@ export default function DomainManagement() {
           { key: 'name', header: 'Domain' },
           { key: 'code', header: 'Code' },
           { key: 'leads', header: 'Domain leads', render: (d) => d.leads.length ? d.leads.map((l) => l.name).join(', ') : <span className="text-slate-400">Unassigned</span> },
+          { key: 'subdomains', header: 'Subdomains', render: (d) => (d.subdomains || []).filter((s) => s.is_active).length ? (d.subdomains).filter((s) => s.is_active).map((s) => s.name).join(', ') : <span className="text-slate-400">None</span> },
           { key: 'batch_count', header: 'Batches' },
           { key: 'student_count', header: 'Students' },
           { key: 'status', header: 'Status', render: (d) => <StatusBadge status={d.is_active ? 'active' : 'inactive'} /> },
@@ -129,12 +190,14 @@ export default function DomainManagement() {
             <div className="flex flex-wrap gap-2">
               <button className="btn-secondary" onClick={() => setEditing(d)}><Pencil className="h-4 w-4" />Edit</button>
               <button className="btn-secondary" onClick={() => setLeadsFor(d)}><Users className="h-4 w-4" />Leads</button>
+              <button className="btn-secondary" onClick={() => setSubsFor(d)}><Layers className="h-4 w-4" />Subdomains</button>
               <button className="btn-secondary" onClick={() => setToggle(d)}>{d.is_active ? 'Deactivate' : 'Activate'}</button>
             </div>
           ) },
         ]} />
       </div>
       {editing && <DomainFormModal domain={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
+      {subsFor && <SubdomainsModal domain={subsFor} onClose={() => { setSubsFor(null) }} onChanged={load} />}
       {leadsFor && <LeadsModal domain={leadsFor} onClose={() => setLeadsFor(null)} onSaved={() => { setLeadsFor(null); load() }} />}
       {toggle && (
         <ConfirmDialog message={toggle.is_active ? `Deactivate ${toggle.name}? New batches cannot be assigned to it.` : `Activate ${toggle.name}?`}

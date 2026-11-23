@@ -33,12 +33,12 @@ export default function ProblemStatementDetail() {
 
   return (
     <div className="max-w-4xl space-y-4">
-      <PageHeader title={ps.title} subtitle={`${ps.ps_code} · ${ps.domain.name}${ps.estimated_duration ? ` · ${ps.estimated_duration}` : ''}`}
+      <PageHeader title={ps.title} subtitle={`${ps.ps_code} · ${ps.domain.name}${ps.subdomain ? ` › ${ps.subdomain.name}` : ''}${ps.estimated_duration ? ` · ${ps.estimated_duration}` : ''}`}
         actions={<>
           <StatusBadge tone={ps.source_type === 'industry' ? 'blue' : 'green'}>{ps.source_type === 'industry' ? `Industry · ${ps.industry}` : 'Internal'}</StatusBadge>
           <StatusBadge tone={DIFF_TONE[ps.difficulty]}>{ps.difficulty}</StatusBadge>
           <StatusBadge status={ps.status} />
-          {ps.can_edit && <Link to={`${base}/problem-statements/${ps.id}/edit`} className="btn-secondary"><Pencil className="h-4 w-4" />Edit</Link>}
+          {ps.can_edit && <Link to={`${base}/project-shelf/${ps.id}/edit`} className="btn-secondary"><Pencil className="h-4 w-4" />Edit</Link>}
         </>} />
       {SECTIONS.filter(([k]) => ps[k]).map(([k, label]) => (
         <section key={k} className="card" aria-label={label}>

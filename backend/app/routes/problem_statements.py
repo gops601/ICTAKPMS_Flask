@@ -6,7 +6,7 @@ from flask_smorest import Blueprint
 from app.extensions import db
 from app.models import ProblemStatement, ProblemStatementDataset, ProblemStatementDocument
 from app.permissions import current_user, login_required, roles_required
-from app.permissions.scope import can_access_domain, can_view_problem_statement, lead_domain_ids
+from app.permissions.scope import can_access_domain, can_view_problem_statement, lead_domain_ids, mentor_domain_ids
 from app.schemas.problem import (ProblemStatementSchema, ProblemStatementUpdateSchema, PSStatusSchema,
                                  file_to_dict, ps_to_dict)
 from app.services import file_service, problem_service
@@ -38,15 +38,19 @@ def _editable(ps_id):
 
 
 @bp.get("")
-@bp.doc(security=SEC)
-@roles_required(*MANAGERS)
+@bp.doc(security=SEC, description="Admins, domain leads and mentors (who see their batches' domains, to allocate).")
+@roles_required(*MANAGERS, "mentor")
 def list_problem_statements():
     user, a = current_user(), request.args
     q = db.select(ProblemStatement)
     if user.role_name == "domain_lead":
         q = q.where(ProblemStatement.domain_id.in_(lead_domain_ids(user) or {-1}))
+    elif user.role_name == "mentor":
+        q = q.where(ProblemStatement.domain_id.in_(mentor_domain_ids(user) or {-1}))
     if a.get("domain_id", type=int):
         q = q.where(ProblemStatement.domain_id == a.get("domain_id", type=int))
+    if a.get("subdomain_id", type=int):
+        q = q.where(ProblemStatement.subdomain_id == a.get("subdomain_id", type=int))
     if a.get("difficulty") in problem_service.DIFFICULTIES:
         q = q.where(ProblemStatement.difficulty == a["difficulty"])
     if a.get("status") in problem_service.STATUSES:
@@ -69,12 +73,14 @@ def list_problem_statements():
 
 @bp.get("/industries")
 @bp.doc(security=SEC, description="Distinct industries used by industry problem statements (for filters).")
-@roles_required(*MANAGERS)
+@roles_required(*MANAGERS, "mentor")
 def list_industries():
     user = current_user()
     q = db.select(ProblemStatement.industry).where(ProblemStatement.industry.is_not(None))
     if user.role_name == "domain_lead":
         q = q.where(ProblemStatement.domain_id.in_(lead_domain_ids(user) or {-1}))
+    elif user.role_name == "mentor":
+        q = q.where(ProblemStatement.domain_id.in_(mentor_domain_ids(user) or {-1}))
     return ok(sorted(set(db.session.scalars(q.distinct())), key=str.lower))
 
 
@@ -84,6 +90,8 @@ def list_industries():
 @roles_required(*MANAGERS)
 def create_problem_statement(data):
     user = current_user()
+    if not (data.get("ps_code") or "").strip():
+        data = {**data, "ps_code": problem_service.new_ps_code()}
     clean, errors = problem_service.validate_ps_data(data, user)
     if errors:
         raise AppError("Validation failed", 422, errors)
