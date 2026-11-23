@@ -36,6 +36,8 @@ import BatchDetail from './pages/common/BatchDetail'
 import AllocatePage from './pages/common/AllocatePage'
 import MentorWorkload from './pages/common/MentorWorkload'
 import MyProject from './pages/student/MyProject'
+import MyProposal from './pages/student/MyProposal'
+import ProposalApprovals from './pages/mentor/ProposalApprovals'
 import { SrsProjectPage, SrsQueuePage, StudentGithubPage, StudentSrsPage } from './pages/common/SrsPages'
 import { ScrumOverviewPage, ScrumProjectPage, StudentScrumPage } from './pages/common/ScrumPages'
 import { EvaluationQueuePage, ProjectReviewsPage, ReviewPage, StudentReviewsPage, TemplatesPage } from './pages/common/ReviewPages'
@@ -121,6 +123,7 @@ export default function App() {
             <Route path="/mentor/reports" element={<ReportsPage title="Project Reports" />} />
             <Route path="/mentor/batches" element={<MyBatches />} />
             <Route path="/mentor/batches/:id" element={<BatchDetail />} />
+            <Route path="/mentor/proposals" element={<ProposalApprovals />} />
             <Route path="/mentor/srs" element={<SrsQueuePage />} />
             <Route path="/mentor/scrum" element={<ScrumOverviewPage />} />
             <Route path="/mentor/evaluations" element={<EvaluationQueuePage />} />
@@ -131,6 +134,7 @@ export default function App() {
           <Route element={<RoleRoute roles={['student']} />}>
             <Route path="/student" element={<StudentDashboard />} />
             <Route path="/student/project" element={<MyProject />} />
+            <Route path="/student/proposal" element={<MyProposal />} />
             <Route path="/student/srs" element={<StudentSrsPage />} />
             <Route path="/student/scrum" element={<StudentScrumPage />} />
             <Route path="/student/reviews" element={<StudentReviewsPage />} />

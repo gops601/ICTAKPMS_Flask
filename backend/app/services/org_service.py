@@ -246,6 +246,21 @@ def update_batch(batch, data):
     return batch
 
 
+def set_project_dates(batch, start_raw, end_raw):
+    start, end = parse_date(start_raw), parse_date(end_raw)
+    errors = {}
+    if not start:
+        errors["project_start_date"] = "A valid project start date (YYYY-MM-DD) is required"
+    if not end:
+        errors["project_end_date"] = "A valid project end date (YYYY-MM-DD) is required"
+    if start and end and end <= start:
+        errors["project_end_date"] = "The project end date must be after the start date"
+    if errors:
+        raise AppError("Validation failed", 422, errors)
+    batch.project_start_date, batch.project_end_date = start, end
+    return batch
+
+
 def set_batch_status(batch, status):
     if status not in ("active", "closed"):
         raise AppError("status must be 'active' or 'closed'", 422)

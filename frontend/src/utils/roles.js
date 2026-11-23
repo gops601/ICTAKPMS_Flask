@@ -1,5 +1,5 @@
 import {
-  Bell, Briefcase, Building2, ClipboardCheck, FileSpreadsheet, FileText, FileUp, FolderKanban, Github, KanbanSquare, ListChecks, Star, BarChart3, CalendarClock, GraduationCap, KeyRound, Layers,
+  Bell, Briefcase, Building2, ClipboardCheck, FileCheck, FilePlus, FileSpreadsheet, FileText, FileUp, FolderKanban, Github, KanbanSquare, ListChecks, Star, BarChart3, CalendarClock, GraduationCap, KeyRound, Layers,
   LayoutDashboard, Network, Upload, UserCheck, UserCircle, UserCog, Users,
 } from 'lucide-react'
 
@@ -57,6 +57,7 @@ export const ROLE_MENU = {
     { to: '/mentor', label: 'Dashboard', icon: LayoutDashboard, end: true },
     { to: '/mentor/batches', label: 'My Batches', icon: Layers },
     { to: '/mentor/projects', label: 'My Projects', icon: FolderKanban },
+    { to: '/mentor/proposals', label: 'Problem Approvals', icon: FileCheck },
     { to: '/mentor/srs', label: 'SRS Review', icon: ClipboardCheck },
     { to: '/mentor/scrum', label: 'Scrum Monitoring', icon: KanbanSquare },
     { to: '/mentor/evaluations', label: 'Weekly Evaluations', icon: ListChecks },
@@ -67,6 +68,7 @@ export const ROLE_MENU = {
   student: [
     { to: '/student', label: 'Dashboard', icon: LayoutDashboard, end: true },
     { to: '/student/project', label: 'My Project', icon: Briefcase },
+    { to: '/student/proposal', label: 'My Problem Statement', icon: FilePlus },
     { to: '/student/srs', label: 'SRS Submission', icon: FileUp },
     { to: '/student/github', label: 'GitHub Repository', icon: Github },
     { to: '/student/scrum', label: 'Scrum Board', icon: KanbanSquare },

@@ -10,6 +10,7 @@ from app.utils.errors import AppError, NotFound
 
 DIFFICULTIES = ("easy", "medium", "hard")
 STATUSES = ("active", "inactive")
+SOURCE_TYPES = ("internal", "industry")
 RICH_FIELDS = ("description", "problem_definition", "objectives", "scope", "expected_outcomes",
                "functional_requirements", "non_functional_requirements", "suggested_technologies",
                "dataset_info", "required_skills")
@@ -77,6 +78,21 @@ def validate_ps_data(data, user, existing=None):
     if status not in STATUSES:
         errors["status"] = f"Status must be one of: {', '.join(STATUSES)}"
     clean["status"] = status
+
+    source_type = str(data.get("source_type", existing.source_type if existing else "internal") or "internal").strip().lower()
+    if source_type not in SOURCE_TYPES:
+        errors["source_type"] = "Statement type must be internal or industry"
+    clean["source_type"] = source_type
+    industry = data.get("industry", existing.industry if existing else None)
+    industry = str(industry).strip() if industry not in (None, "") else None
+    if source_type == "industry":
+        if not industry:
+            errors["industry"] = "Industry is required for an industry problem statement"
+        elif len(industry) > 120:
+            errors["industry"] = "Industry must be at most 120 characters"
+    else:
+        industry = None  # internal statements carry no industry
+    clean["industry"] = industry
 
     duration = data.get("estimated_duration", existing.estimated_duration if existing else None)
     duration = (str(duration).strip() if duration not in (None, "") else None)

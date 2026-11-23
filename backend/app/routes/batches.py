@@ -5,7 +5,7 @@ from app.extensions import db
 from app.models import Batch, BatchMentor, Mentor, Student
 from app.permissions import current_user, roles_required
 from app.permissions.scope import ensure_batch_access, scoped_batches
-from app.schemas.org import BatchSchema, BatchUpdateSchema, StatusSchema, batch_to_dict, mentor_to_dict
+from app.schemas.org import BatchSchema, BatchUpdateSchema, ProjectDatesSchema, StatusSchema, batch_to_dict, mentor_to_dict
 from app.schemas.project import BatchMentorSchema, ReassignMentorSchema
 from app.services import org_service, project_service
 from app.utils.audit import audit
@@ -20,7 +20,8 @@ ALL = ("admin", "domain_lead", "mentor", "student")
 def _notify_leads(batch):
     from app.services.notification_service import domain_lead_user_ids, notify
     notify(domain_lead_user_ids(batch.domain_id), "batch_assigned", "Batch assigned to your domain",
-           f"Batch {batch.code} – {batch.name} was assigned to {batch.domain.name}.", f"/lead/batches/{batch.id}")
+           f"Batch {batch.code} – {batch.name} was assigned to {batch.domain.name}. "
+           "Please set the project start and end dates for this batch.", f"/lead/batches/{batch.id}")
 
 
 def _student_counts(ids):
@@ -87,6 +88,19 @@ def update_batch(data, batch_id):
         _notify_leads(batch)
     db.session.commit()
     return ok(batch_to_dict(batch, org_service.batch_student_count(batch.id)))
+
+
+@bp.put("/<int:batch_id>/project-dates")
+@bp.doc(security=SEC, description="Domain lead (or admin) sets when projects in this batch start and end.")
+@bp.arguments(ProjectDatesSchema)
+@roles_required("admin", "domain_lead")
+def set_project_dates(data, batch_id):
+    user = current_user()
+    batch = org_service.set_project_dates(ensure_batch_access(user, batch_id), data["project_start_date"],
+                                          data["project_end_date"])
+    audit(user.id, "batch.project_dates", "batch", batch.id, data)
+    db.session.commit()
+    return ok(batch_to_dict(batch, org_service.batch_student_count(batch.id)), "Project dates saved")
 
 
 @bp.patch("/<int:batch_id>/status")

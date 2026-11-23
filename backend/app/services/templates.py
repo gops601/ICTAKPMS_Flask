@@ -30,6 +30,10 @@ def build_template(import_type, ou, fmt):
             note = "easy, medium or hard (default medium)"
         elif c["key"] == "status":
             note = "active or inactive (default active)"
+        elif c["key"] == "source_type":
+            note = "internal or industry (default internal)"
+        elif c["key"] == "industry":
+            note = "Required when Statement Type is industry, e.g. Healthcare"
         elif c["key"] == "ps_code":
             note = "Unique ID, letters/numbers/. _ - only"
         elif c["key"] in ("description", "problem_definition"):

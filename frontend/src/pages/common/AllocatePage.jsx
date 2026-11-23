@@ -79,7 +79,7 @@ export default function AllocatePage() {
             </select>
           </div>
           <div>
-            <label htmlFor="al-start" className="label">Start date (defaults to today)</label>
+            <label htmlFor="al-start" className="label">Start date (defaults to the batch's project start date, else today)</label>
             <input id="al-start" type="date" className="input" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
           </div>
           <fieldset>

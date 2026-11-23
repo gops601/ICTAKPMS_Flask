@@ -13,7 +13,10 @@ import StatusBadge from '../../components/StatusBadge'
 import Alert from '../../components/Alert'
 
 function CreateUserModal({ domains, onClose, onDone, fixedRole }) {
-  const [form, setForm] = useState({ role: fixedRole || 'mentor', name: '', email: '', phone: '', domain_id: '', designation: '' })
+  const [form, setForm] = useState({
+    role: fixedRole || 'mentor', name: '', email: '', phone: '', domain_id: '', designation: '',
+    mentor_type: 'internal', company: '', industry_sector: '', experience_years: '', linkedin_url: '', bio: '',
+  })
   const [error, setError] = useState('')
   const [errs, setErrs] = useState({})
   const [busy, setBusy] = useState(false)
@@ -26,6 +29,13 @@ function CreateUserModal({ domains, onClose, onDone, fixedRole }) {
     if (form.role === 'mentor') {
       body.domain_id = form.domain_id ? Number(form.domain_id) : null
       body.designation = form.designation || null
+      body.mentor_type = form.mentor_type
+      if (form.mentor_type === 'industry') {
+        Object.assign(body, {
+          company: form.company, industry_sector: form.industry_sector, linkedin_url: form.linkedin_url || null, bio: form.bio,
+          experience_years: form.experience_years === '' ? null : Number(form.experience_years),
+        })
+      }
     }
     try { setCreated(await userService.create(body)) } catch (err) { setError(errorMessage(err)); setErrs(fieldErrors(err)) } finally { setBusy(false) }
   }
@@ -40,6 +50,7 @@ function CreateUserModal({ domains, onClose, onDone, fixedRole }) {
     )
   }
   const err = (k) => errs[k] && <p className="mt-1 text-xs text-red-600">{errs[k]}</p>
+  const industry = form.role === 'mentor' && form.mentor_type === 'industry'
   return (
     <Modal title="Create user" onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
@@ -59,7 +70,24 @@ function CreateUserModal({ domains, onClose, onDone, fixedRole }) {
               <select id="u-dom" className="input" value={form.domain_id} onChange={set('domain_id')}>
                 <option value="">None</option>{domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select></div>
-            <div><label htmlFor="u-des" className="label">Designation</label><input id="u-des" className="input" value={form.designation} onChange={set('designation')} /></div>
+            <fieldset>
+              <legend className="label">Mentor type *</legend>
+              <div className="flex gap-4 text-sm">
+                <label className="flex items-center gap-2"><input type="radio" name="mentor_type" value="internal" checked={form.mentor_type === 'internal'} onChange={set('mentor_type')} />Internal (ICT trainer)</label>
+                <label className="flex items-center gap-2"><input type="radio" name="mentor_type" value="industry" checked={form.mentor_type === 'industry'} onChange={set('mentor_type')} />External (industry mentor)</label>
+              </div>
+            </fieldset>
+            <div><label htmlFor="u-des" className="label">Designation{industry && ' *'}</label><input id="u-des" className="input" required={industry} value={form.designation} onChange={set('designation')} />{err('designation')}</div>
+            {industry && (
+              <div className="space-y-3 rounded-lg bg-slate-50 p-3">
+                <p className="text-xs font-medium text-slate-600">Industry mentor details</p>
+                <div><label htmlFor="u-co" className="label">Company *</label><input id="u-co" className="input" required value={form.company} onChange={set('company')} />{err('company')}</div>
+                <div><label htmlFor="u-sec" className="label">Industry / sector *</label><input id="u-sec" className="input" required placeholder="e.g. Healthcare, Finance" value={form.industry_sector} onChange={set('industry_sector')} />{err('industry_sector')}</div>
+                <div><label htmlFor="u-exp" className="label">Years of experience</label><input id="u-exp" type="number" min="0" max="70" className="input" value={form.experience_years} onChange={set('experience_years')} />{err('experience_years')}</div>
+                <div><label htmlFor="u-li" className="label">Profile link (LinkedIn / website)</label><input id="u-li" type="url" className="input" placeholder="https://…" value={form.linkedin_url} onChange={set('linkedin_url')} />{err('linkedin_url')}</div>
+                <div><label htmlFor="u-bio" className="label">Professional profile *</label><textarea id="u-bio" className="input min-h-[90px]" required value={form.bio} onChange={set('bio')} />{err('bio')}</div>
+              </div>
+            )}
           </>
         )}
         <p className="text-xs text-slate-500">A temporary password is generated automatically.</p>
@@ -75,6 +103,7 @@ function CreateUserModal({ domains, onClose, onDone, fixedRole }) {
 export default function UserManagement({ fixedRole, title = 'Users', subtitle = 'Administrators, domain leads, mentors and students.', addLabel = 'Create user' }) {
   const [q, setQ] = useState('')
   const [role, setRole] = useState('')
+  const [mentorType, setMentorType] = useState('')
   const [page, setPage] = useState(1)
   const [domains, setDomains] = useState([])
   const [creating, setCreating] = useState(false)
@@ -86,7 +115,12 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
   const dq = useDebounced(q)
 
   useEffect(() => { domainService.list({ active: 1 }).then(setDomains).catch(() => {}) }, [])
-  const { items, meta, loading, error, reload } = useList(userService.list, { q: dq, role: fixedRole || role || undefined, page })
+  const isMentors = fixedRole === 'mentor'
+  // The mentor screen reads /mentors (it carries type/company details); rows are mapped to user ids for the account actions.
+  const { items: raw, meta, loading, error, reload } = useList(isMentors ? userService.mentors : userService.list, {
+    q: dq, role: fixedRole || role || undefined, page, mentor_type: isMentors ? mentorType || undefined : undefined,
+  })
+  const items = isMentors ? raw.map((m) => ({ ...m, id: m.user_id, role: 'mentor' })) : raw
 
   const doReset = async () => {
     setBusy(true)
@@ -105,6 +139,11 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
         actions={<button className="btn-primary" onClick={() => setCreating(true)}><Plus className="h-4 w-4" />{addLabel}</button>} />
       <div className="card">
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {isMentors && (
+            <select className="input sm:order-2" aria-label="Filter by mentor type" value={mentorType} onChange={(e) => { setMentorType(e.target.value); setPage(1) }}>
+              <option value="">All mentors</option><option value="internal">Internal (ICT trainers)</option><option value="industry">External (industry)</option>
+            </select>
+          )}
           <input className="input" placeholder="Search name or email…" aria-label="Search users" value={q} onChange={(e) => { setQ(e.target.value); setPage(1) }} />
           {!fixedRole && (
             <select className="input" aria-label="Filter by role" value={role} onChange={(e) => { setRole(e.target.value); setPage(1) }}>
@@ -117,7 +156,12 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
         <DataTable loading={loading} rows={items} columns={[
           { key: 'name', header: 'Name' },
           { key: 'email', header: 'Email' },
-          { key: 'role', header: 'Role', render: (u) => ROLE_LABEL[u.role] },
+          ...(isMentors ? [
+            { key: 'type', header: 'Type', render: (u) => <StatusBadge tone={u.mentor_type === 'industry' ? 'blue' : 'green'}>{u.mentor_type === 'industry' ? 'Industry' : 'Internal'}</StatusBadge> },
+            { key: 'org', header: 'Company / sector', render: (u) => (u.mentor_type === 'industry'
+              ? <div><div className="font-medium">{u.company}</div><div className="text-xs text-slate-500">{u.industry_sector}{u.designation ? ` · ${u.designation}` : ''}{u.linkedin_url && <> · <a className="text-brand underline" href={u.linkedin_url} target="_blank" rel="noopener noreferrer">Profile</a></>}</div></div>
+              : <span className="text-slate-400">{u.designation || 'ICT trainer'}</span>) },
+          ] : [{ key: 'role', header: 'Role', render: (u) => ROLE_LABEL[u.role] }]),
           { key: 'status', header: 'Status', render: (u) => <StatusBadge status={u.is_active ? 'active' : 'inactive'} /> },
           { key: 'actions', header: 'Actions', render: (u) => (
             <div className="flex gap-2">

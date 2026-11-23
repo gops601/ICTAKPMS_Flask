@@ -33,8 +33,8 @@ export default function ReviewDetail({ review }) {
         </tfoot>
       </table>
       {(review.student_remarks || []).some((s) => s.remarks) && (
-        <section className="rounded-lg border border-indigo-100 bg-indigo-50/60 p-3" aria-label="Remarks for students">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Remarks for each student</h4>
+        <section className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-3" aria-label="Remarks for students">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Remarks for each student</h4>
           <ul className="mt-1 space-y-1 text-sm text-slate-800">
             {review.student_remarks.filter((s) => s.remarks).map((s) => <li key={s.student_id}><span className="font-medium">{s.name}:</span> {s.remarks}</li>)}
           </ul>

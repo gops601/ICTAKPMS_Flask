@@ -16,12 +16,41 @@ def generate_temp_password():
             return pw
 
 
-def create_staff_user(role, name, email, password, phone=None, domain_id=None, designation=None, expertise=None):
+MENTOR_TYPES = ("internal", "industry")
+INDUSTRY_REQUIRED = {"company": "Company", "industry_sector": "Industry / sector", "designation": "Designation",
+                     "bio": "Professional profile"}
+
+
+def clean_mentor_profile(mentor_type, designation, company, industry_sector, experience_years, linkedin_url, bio):
+    """Internal mentors are ICT trainers; industry mentors must supply company details and a profile."""
+    mentor_type = mentor_type or "internal"
+    if mentor_type not in MENTOR_TYPES:
+        raise AppError("Mentor type must be internal or industry", 422, {"mentor_type": "Invalid mentor type"})
+    strip = lambda v: (v or "").strip() or None  # noqa: E731
+    out = {"mentor_type": mentor_type, "designation": strip(designation), "company": None, "industry_sector": None,
+           "experience_years": None, "linkedin_url": None, "bio": None}
+    if mentor_type == "industry":
+        out.update(company=strip(company), industry_sector=strip(industry_sector), experience_years=experience_years,
+                   linkedin_url=strip(linkedin_url), bio=strip(bio))
+        errors = {k: f"{label} is required for industry mentors" for k, label in INDUSTRY_REQUIRED.items() if not out[k]}
+        if errors:
+            raise AppError("Industry mentors need company details and a profile", 422, errors)
+        if out["linkedin_url"] and not out["linkedin_url"].lower().startswith(("http://", "https://")):
+            raise AppError("Profile link must start with http:// or https://", 422,
+                           {"linkedin_url": "Must be a full http(s) URL"})
+    return out
+
+
+def create_staff_user(role, name, email, password, phone=None, domain_id=None, designation=None, expertise=None,
+                      mentor_type="internal", company=None, industry_sector=None, experience_years=None,
+                      linkedin_url=None, bio=None):
     if role == "student":
         raise AppError("Students are created through the student endpoints (a batch is required)", 422)
+    profile = clean_mentor_profile(mentor_type, designation, company, industry_sector, experience_years,
+                                   linkedin_url, bio) if role == "mentor" else None  # validate before creating the user
     user = create_user(role, name, email, password, phone)
     if role == "mentor":
-        db.session.add(Mentor(user_id=user.id, domain_id=domain_id, designation=designation, expertise=expertise))
+        db.session.add(Mentor(user_id=user.id, domain_id=domain_id, expertise=expertise, **profile))
     return user
 
 

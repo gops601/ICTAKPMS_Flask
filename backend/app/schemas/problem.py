@@ -27,6 +27,8 @@ class ProblemStatementSchema(_Base):
     difficulty = fields.String(validate=validate.OneOf(["easy", "medium", "hard"]))
     estimated_duration = fields.String(allow_none=True, validate=validate.Length(max=60))
     status = fields.String(validate=validate.OneOf(["active", "inactive"]))
+    source_type = fields.String(validate=validate.OneOf(["internal", "industry"]))
+    industry = fields.String(allow_none=True, validate=validate.Length(max=120))
 
 
 class ProblemStatementUpdateSchema(ProblemStatementSchema):
@@ -47,6 +49,7 @@ def file_to_dict(link):
 
 def ps_to_dict(ps, detail=False, can_edit=False):
     out = {"id": ps.id, "ps_code": ps.ps_code, "title": ps.title, "difficulty": ps.difficulty, "status": ps.status,
+           "source_type": ps.source_type, "industry": ps.industry,
            "domain": {"id": ps.domain.id, "name": ps.domain.name}, "estimated_duration": ps.estimated_duration,
            "created_at": ps.created_at.isoformat(), "dataset_count": len(ps.datasets),
            "document_count": len(ps.documents)}

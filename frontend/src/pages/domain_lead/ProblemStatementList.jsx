@@ -20,6 +20,9 @@ export default function ProblemStatementList() {
   const [domainId, setDomainId] = useState('')
   const [difficulty, setDifficulty] = useState('')
   const [status, setStatus] = useState('')
+  const [sourceType, setSourceType] = useState('')
+  const [industry, setIndustry] = useState('')
+  const [industries, setIndustries] = useState([])
   const [page, setPage] = useState(1)
   const [sort, setSort] = useState({ key: 'created', order: 'desc' })
   const [domains, setDomains] = useState([])
@@ -28,11 +31,13 @@ export default function ProblemStatementList() {
   const [actionError, setActionError] = useState('')
   const dq = useDebounced(q)
 
-  useEffect(() => { domainService.list().then(setDomains).catch(() => {}) }, [])
+  useEffect(() => { domainService.list().then(setDomains).catch(() => {}); psService.industries().then(setIndustries).catch(() => {}) }, [])
   const { items, meta, loading, error, reload } = useList(psService.list, {
     q: dq, domain_id: domainId || undefined, difficulty: difficulty || undefined, status: status || undefined,
+    source_type: sourceType || undefined, industry: industry || undefined,
     page, sort: sort.key, order: sort.order,
   })
+  const changeType = (e) => { setSourceType(e.target.value); if (e.target.value === 'internal') setIndustry(''); setPage(1) }
   const reset = (fn) => (e) => { fn(e.target.value); setPage(1) }
   const onSort = (key) => setSort((s) => ({ key, order: s.key === key && s.order === 'asc' ? 'desc' : 'asc' }))
 
@@ -50,10 +55,16 @@ export default function ProblemStatementList() {
           <Link to={`${base}/problem-statements/new`} className="btn-primary"><Plus className="h-4 w-4" />New problem statement</Link>
         </>} />
       <div className="card">
-        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-4">
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <input className="input" placeholder="Search title or ID…" aria-label="Search problem statements" value={q} onChange={reset(setQ)} />
           <select className="input" aria-label="Filter by domain" value={domainId} onChange={reset(setDomainId)}>
             <option value="">All domains</option>{domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+          <select className="input" aria-label="Filter by statement type" value={sourceType} onChange={changeType}>
+            <option value="">All types</option><option value="internal">Internal</option><option value="industry">Industry</option>
+          </select>
+          <select className="input" aria-label="Filter by industry" value={industry} disabled={sourceType === 'internal'} onChange={reset(setIndustry)}>
+            <option value="">All industries</option>{industries.map((i) => <option key={i} value={i}>{i}</option>)}
           </select>
           <select className="input" aria-label="Filter by difficulty" value={difficulty} onChange={reset(setDifficulty)}>
             <option value="">Any difficulty</option><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option>
@@ -67,6 +78,9 @@ export default function ProblemStatementList() {
           { key: 'ps_code', header: 'ID', sortKey: 'ps_code' },
           { key: 'title', header: 'Title', sortKey: 'title' },
           { key: 'domain', header: 'Domain', render: (p) => p.domain.name },
+          { key: 'source_type', header: 'Type', render: (p) => (p.source_type === 'industry'
+            ? <div><StatusBadge tone="blue">Industry</StatusBadge><div className="mt-0.5 text-xs text-slate-500">{p.industry}</div></div>
+            : <StatusBadge tone="green">Internal</StatusBadge>) },
           { key: 'difficulty', header: 'Difficulty', sortKey: 'difficulty', render: (p) => <StatusBadge tone={DIFF_TONE[p.difficulty]}>{p.difficulty}</StatusBadge> },
           { key: 'files', header: 'Files', render: (p) => `${p.dataset_count} datasets · ${p.document_count} docs` },
           { key: 'status', header: 'Status', render: (p) => <StatusBadge status={p.status} /> },

@@ -71,6 +71,11 @@ class BatchUpdateSchema(_Base):
     details = fields.Dict(keys=fields.String(), values=fields.Raw(allow_none=True))
 
 
+class ProjectDatesSchema(_Base):
+    project_start_date = fields.String(required=True)
+    project_end_date = fields.String(required=True)
+
+
 class StatusSchema(_Base):
     status = fields.String(required=True)
 
@@ -102,6 +107,12 @@ class StaffCreateSchema(_Base):
     domain_id = fields.Integer(load_default=None)
     designation = fields.String(load_default=None, validate=validate.Length(max=120))
     expertise = fields.String(load_default=None, validate=validate.Length(max=255))
+    mentor_type = fields.String(load_default="internal", validate=validate.OneOf(["internal", "industry"]))
+    company = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=150))
+    industry_sector = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=120))
+    experience_years = fields.Integer(load_default=None, allow_none=True, validate=validate.Range(min=0, max=70))
+    linkedin_url = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=255))
+    bio = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=5000))
 
 
 class ResetPasswordAdminSchema(_Base):
@@ -136,7 +147,8 @@ def domain_to_dict(d, counts=None):
 def batch_to_dict(b, student_count=None, details=True):
     out = {"id": b.id, "code": b.code, "name": b.name, "status": b.status,
            "ou": {"id": b.ou.id, "name": b.ou.name}, "domain": {"id": b.domain.id, "name": b.domain.name} if b.domain else None,
-           "start_date": _iso(b.start_date), "end_date": _iso(b.end_date)}
+           "start_date": _iso(b.start_date), "end_date": _iso(b.end_date),
+           "project_start_date": _iso(b.project_start_date), "project_end_date": _iso(b.project_end_date)}
     if student_count is not None:
         out["student_count"] = student_count
     if details:
@@ -153,4 +165,6 @@ def student_to_dict(s):
 def mentor_to_dict(m):
     return {"id": m.id, "user_id": m.user_id, "name": m.user.name, "email": m.user.email, "phone": m.user.phone,
             "is_active": m.user.is_active, "designation": m.designation, "expertise": m.expertise,
+            "mentor_type": m.mentor_type, "company": m.company, "industry_sector": m.industry_sector,
+            "experience_years": m.experience_years, "linkedin_url": m.linkedin_url, "bio": m.bio,
             "domain": {"id": m.domain.id, "name": m.domain.name} if m.domain else None}
