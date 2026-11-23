@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+# Project-specific
 .env
 *.env.local
 __pycache__/
@@ -12,7 +12,7 @@ uploads/*
 test_uploads/
 .vscode/
 .idea/
-=======
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -236,4 +236,3 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
->>>>>>> a8b117aa934ebd8892db51e39cd01ae774d469f7
