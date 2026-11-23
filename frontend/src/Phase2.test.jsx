@@ -1,0 +1,199 @@
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import BatchForm from './pages/admin/BatchForm'
+import ImportWizard from './components/ImportWizard'
+import App from './App'
+import { AuthProvider } from './context/AuthContext'
+import api from './services/api'
+import * as admin from './services/adminService'
+
+// The real dashboards are covered in Phase8.test.jsx; here a stub keeps navigation tests independent of chart data.
+vi.mock('./pages/common/Dashboards', async () => {
+  const React = await import('react')
+  const { useAuth } = await import('./context/AuthContext')
+  const Stub = () => { const { user } = useAuth(); return React.createElement('h1', null, `Welcome, ${user.name}`) }
+  return { AdminDashboard: Stub, LeadDashboard: Stub, MentorDashboard: Stub, StudentDashboard: Stub }
+})
+
+vi.mock('./services/api', async () => {
+  const actual = await vi.importActual('./services/api')
+  return { ...actual, default: { post: vi.fn(), get: vi.fn(() => Promise.resolve({ data: { data: { count: 0 } } })) } }
+})
+vi.mock('./services/adminService', async () => {
+  const actual = await vi.importActual('./services/adminService')
+  return {
+    ...actual,
+    downloadTextFile: vi.fn(),
+    ouService: { list: vi.fn(), fields: vi.fn() },
+    domainService: { list: vi.fn() },
+    batchService: { create: vi.fn(), update: vi.fn(), get: vi.fn() },
+    importService: { upload: vi.fn(), confirm: vi.fn() },
+  }
+})
+
+const OUS = [{ id: 1, name: 'Academic OU' }, { id: 2, name: 'Retail OU' }]
+const FIELDS = {
+  1: [
+    { id: 11, field_key: 'university', label: 'University', field_type: 'text', is_required: true },
+    { id: 12, field_key: 'semester', label: 'Semester', field_type: 'select', options: ['S1', 'S2'], is_required: false },
+  ],
+  2: [{ id: 21, field_key: 'coordinator', label: 'Coordinator', field_type: 'text', is_required: false }],
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  localStorage.clear()
+  admin.ouService.list.mockResolvedValue(OUS)
+  admin.ouService.fields.mockImplementation((id) => Promise.resolve(FIELDS[id]))
+  admin.domainService.list.mockResolvedValue([{ id: 5, name: 'AI & ML' }])
+})
+
+const renderForm = () =>
+  render(
+    <MemoryRouter initialEntries={['/admin/batches/new']}>
+      <Routes>
+        <Route path="/admin/batches/new" element={<BatchForm />} />
+        <Route path="/admin/batches" element={<div>Batch list page</div>} />
+      </Routes>
+    </MemoryRouter>,
+  )
+
+describe('batch form (dynamic OU fields)', () => {
+  it('renders OU-specific inputs from the API and switches when the OU changes', async () => {
+    renderForm()
+    await userEvent.selectOptions(await screen.findByLabelText(/organisational unit/i), '1')
+    expect(await screen.findByLabelText(/university/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/semester/i).tagName).toBe('SELECT')
+    expect(screen.queryByLabelText(/coordinator/i)).not.toBeInTheDocument()
+
+    await userEvent.selectOptions(screen.getByLabelText(/organisational unit/i), '2')
+    expect(await screen.findByLabelText(/coordinator/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText(/university/i)).not.toBeInTheDocument()
+  })
+
+  it('submits dynamic details and navigates back on success', async () => {
+    admin.batchService.create.mockResolvedValue({ id: 9 })
+    renderForm()
+    await userEvent.selectOptions(await screen.findByLabelText(/organisational unit/i), '1')
+    await userEvent.selectOptions(screen.getByLabelText(/domain/i), '5')
+    await userEvent.type(screen.getByLabelText(/batch code/i), 'B-1')
+    await userEvent.type(screen.getByLabelText(/batch name/i), 'First')
+    await userEvent.type(await screen.findByLabelText(/university/i), 'KU')
+    await userEvent.click(screen.getByRole('button', { name: /create batch/i }))
+    await waitFor(() => expect(admin.batchService.create).toHaveBeenCalled())
+    const body = admin.batchService.create.mock.calls[0][0]
+    expect(body).toMatchObject({ code: 'B-1', ou_id: 1, domain_id: 5, details: { university: 'KU', semester: '' } })
+    expect(await screen.findByText('Batch list page')).toBeInTheDocument()
+  })
+
+  it('shows server-side field errors next to the inputs', async () => {
+    admin.batchService.create.mockRejectedValue({
+      response: { status: 422, data: { message: 'Validation failed', errors: { 'details.university': 'University is required', code: "Batch code 'B-1' already exists" } } },
+    })
+    renderForm()
+    await userEvent.selectOptions(await screen.findByLabelText(/organisational unit/i), '1')
+    await userEvent.selectOptions(screen.getByLabelText(/domain/i), '5')
+    await userEvent.type(screen.getByLabelText(/batch code/i), 'B-1')
+    await userEvent.type(screen.getByLabelText(/batch name/i), 'First')
+    await userEvent.type(await screen.findByLabelText(/university/i), 'x')
+    await userEvent.click(screen.getByRole('button', { name: /create batch/i }))
+    expect(await screen.findByText('University is required')).toBeInTheDocument()
+    expect(screen.getByText(/already exists/)).toBeInTheDocument()
+  })
+})
+
+describe('import wizard (file upload)', () => {
+  const file = new File(['a,b'], 'batches.csv', { type: 'text/csv' })
+  const baseJob = { id: 7, total_rows: 3, valid_rows: 1, error_rows: 2, ignored_columns: [], imported_rows: 0,
+    preview: [
+      { row_number: 2, status: 'valid', data: { code: 'A' }, errors: [] },
+      { row_number: 3, status: 'error', data: { code: 'B' }, errors: [{ field: 'code', message: 'Duplicate batch code' }] },
+      { row_number: 4, status: 'error', data: { code: '' }, errors: [{ field: 'code', message: 'Batch code is required' }] },
+    ] }
+
+  const upload = async (type = 'batches') => {
+    render(<ImportWizard type={type} title="Bulk upload" />)
+    await userEvent.selectOptions(await screen.findByLabelText(/select ou/i), '1')
+    await userEvent.upload(screen.getByLabelText(/upload completed file/i), file)
+    await userEvent.click(screen.getByRole('button', { name: /upload & validate/i }))
+  }
+
+  it('previews row-wise errors and blocks a full confirm while errors exist', async () => {
+    admin.importService.upload.mockResolvedValue(baseJob)
+    await upload()
+    expect(await screen.findByText('Duplicate batch code')).toBeInTheDocument()
+    expect(screen.getByText('Batch code is required')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /confirm import/i })).toBeDisabled()
+    expect(admin.importService.upload).toHaveBeenCalledWith('batches', '1', file)
+  })
+
+  it('requires an explicit dialog to import only valid rows, then shows the summary', async () => {
+    admin.importService.upload.mockResolvedValue(baseJob)
+    admin.importService.confirm.mockResolvedValue({ ...baseJob, imported_rows: 1 })
+    await upload()
+    await userEvent.click(await screen.findByRole('button', { name: /import valid rows only/i }))
+    expect(screen.getByText(/will NOT be imported/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^import valid rows$/i }))
+    expect(await screen.findByText(/1 record\(s\) imported successfully/i)).toBeInTheDocument()
+    expect(admin.importService.confirm).toHaveBeenCalledWith(7, true)
+  })
+
+  it('offers a one-time credentials download after a student import', async () => {
+    const clean = { ...baseJob, error_rows: 0, valid_rows: 3, preview: baseJob.preview.slice(0, 1) }
+    admin.importService.upload.mockResolvedValue(clean)
+    admin.importService.confirm.mockResolvedValue({
+      ...clean, imported_rows: 3,
+      credentials: [{ name: 'A', email: 'a@x.com', registration_no: 'R1', batch_code: 'B1', temporary_password: 'Tmp12345' }],
+    })
+    await upload('students')
+    await userEvent.click(await screen.findByRole('button', { name: /confirm import/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /download student details/i }))
+    expect(admin.downloadTextFile).toHaveBeenCalledWith(expect.stringContaining('Tmp12345'), 'student_credentials.csv')
+  })
+
+  it('shows the server message for an invalid file', async () => {
+    admin.importService.upload.mockRejectedValue({ response: { status: 422, data: { message: 'The file is missing required columns: Batch Name' } } })
+    await upload()
+    expect(await screen.findByRole('alert')).toHaveTextContent('missing required columns: Batch Name')
+  })
+})
+
+describe('always-enabled templates and upload actions', () => {
+  it('preselects an OU and keeps template/upload buttons enabled', async () => {
+    render(<ImportWizard type="batches" title="Bulk upload" />)
+    const ouSelect = await screen.findByLabelText(/select ou/i)
+    await waitFor(() => expect(ouSelect).toHaveValue('1'))
+    for (const name of [/excel/i, /csv/i, /upload & validate/i]) {
+      expect(screen.getByRole('button', { name })).toBeEnabled()
+    }
+  })
+
+  it('explains what is missing instead of disabling upload', async () => {
+    render(<ImportWizard type="students" title="Bulk upload" />)
+    await userEvent.click(await screen.findByRole('button', { name: /upload & validate/i }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/choose a .csv or .xlsx file/i)
+    expect(admin.importService.upload).not.toHaveBeenCalled()
+  })
+})
+
+describe('admin navigation', () => {
+  it('shows the admin modules in the sidebar and not for other roles', async () => {
+    localStorage.setItem('plms_access', 'tok')
+    api.get.mockResolvedValueOnce({ data: { data: { id: 1, name: 'Ad', email: 'a@x.com', role: 'admin', must_change_password: false } } })
+    render(<MemoryRouter initialEntries={['/admin']}><AuthProvider><App /></AuthProvider></MemoryRouter>)
+    const nav = await screen.findByRole('navigation', { name: /main navigation/i })
+    for (const label of ['Organisational Units', 'Domains', 'Batches', 'Students', 'Domain Leads', 'Mentors', 'Bulk Upload', 'All Users']) {
+      expect(nav).toHaveTextContent(label)
+    }
+  })
+
+  it('redirects a mentor away from /admin/ous', async () => {
+    localStorage.setItem('plms_access', 'tok')
+    api.get.mockResolvedValueOnce({ data: { data: { id: 2, name: 'Men', email: 'm@x.com', role: 'mentor', must_change_password: false } } })
+    render(<MemoryRouter initialEntries={['/admin/ous']}><AuthProvider><App /></AuthProvider></MemoryRouter>)
+    expect(await screen.findByText(/welcome, men/i)).toBeInTheDocument()
+    expect(screen.queryByText('Organisational Units')).not.toBeInTheDocument()
+  })
+})

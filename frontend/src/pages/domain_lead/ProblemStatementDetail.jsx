@@ -1,0 +1,53 @@
+import { useCallback, useEffect, useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { Pencil } from 'lucide-react'
+import { psService } from '../../services/adminService'
+import { errorMessage } from '../../services/api'
+import useBasePath from '../../hooks/useBasePath'
+import PageHeader from '../../components/PageHeader'
+import AttachmentPanel from '../../components/AttachmentPanel'
+import StatusBadge from '../../components/StatusBadge'
+import Alert from '../../components/Alert'
+import Spinner from '../../components/Spinner'
+
+const SECTIONS = [
+  ['description', 'Project description'], ['problem_definition', 'Problem definition'],
+  ['objectives', 'Project objectives'], ['scope', 'Scope'], ['expected_outcomes', 'Expected outcomes'],
+  ['functional_requirements', 'Functional requirements'], ['non_functional_requirements', 'Non-functional requirements'],
+  ['suggested_technologies', 'Suggested technologies'], ['dataset_info', 'Dataset information'], ['required_skills', 'Required skills'],
+]
+const DIFF_TONE = { easy: 'green', medium: 'orange', hard: 'red' }
+
+/** Read-only view. Students/mentors reuse this component in later phases (can_edit comes from the API). */
+export default function ProblemStatementDetail() {
+  const { id } = useParams()
+  const base = useBasePath()
+  const [ps, setPs] = useState(null)
+  const [error, setError] = useState('')
+
+  const load = useCallback(() => psService.get(id).then(setPs).catch((e) => setError(errorMessage(e))), [id])
+  useEffect(() => { load() }, [load])
+
+  if (error) return <Alert>{error}</Alert>
+  if (!ps) return <Spinner />
+
+  return (
+    <div className="max-w-4xl space-y-4">
+      <PageHeader title={ps.title} subtitle={`${ps.ps_code} · ${ps.domain.name}${ps.estimated_duration ? ` · ${ps.estimated_duration}` : ''}`}
+        actions={<>
+          <StatusBadge tone={DIFF_TONE[ps.difficulty]}>{ps.difficulty}</StatusBadge>
+          <StatusBadge status={ps.status} />
+          {ps.can_edit && <Link to={`${base}/problem-statements/${ps.id}/edit`} className="btn-secondary"><Pencil className="h-4 w-4" />Edit</Link>}
+        </>} />
+      {SECTIONS.filter(([k]) => ps[k]).map(([k, label]) => (
+        <section key={k} className="card" aria-label={label}>
+          <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">{label}</h2>
+          {/* HTML is sanitised server-side (bleach allow-list) before storage. */}
+          <div className="rich-content text-sm text-slate-800" dangerouslySetInnerHTML={{ __html: ps[k] }} />
+        </section>
+      ))}
+      <AttachmentPanel psId={ps.id} kind="datasets" title="Datasets" canEdit={false} items={ps.datasets} onChanged={load} />
+      <AttachmentPanel psId={ps.id} kind="documents" title="Reference documents" canEdit={false} items={ps.documents} onChanged={load} />
+    </div>
+  )
+}

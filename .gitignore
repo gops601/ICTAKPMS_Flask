@@ -1,0 +1,13 @@
+.env
+*.env.local
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+node_modules/
+dist/
+uploads/*
+!uploads/.gitkeep
+test_uploads/
+.vscode/
+.idea/
