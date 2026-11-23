@@ -230,7 +230,7 @@ PS_COLUMNS = [
     ("Suggested Technologies", "suggested_technologies", False), ("Dataset Information", "dataset_info", False),
     ("Difficulty Level", "difficulty", False), ("Duration", "estimated_duration", False),
     ("Required Skills", "required_skills", False), ("Status", "status", False),
-    ("Statement Type", "source_type", False), ("Industry", "industry", False),
+    ("Statement Type", "source_type", False), ("Industry", "industry", False), ("Subdomain", "subdomain", False),
 ]
 
 
@@ -248,8 +248,15 @@ class ProblemStatementImporter:
             errs = []
             code = (raw.get("domain") or "").strip()
             domain = domains.get(code.lower()) if code else None
-            data = {k: raw.get(k) for _, k, _ in PS_COLUMNS if k != "domain" and raw.get(k) not in (None, "")}
+            data = {k: raw.get(k) for _, k, _ in PS_COLUMNS if k not in ("domain", "subdomain") and raw.get(k) not in (None, "")}
             data["domain_id"] = domain.id if domain else None
+            sub_name = (raw.get("subdomain") or "").strip()
+            if sub_name and domain:
+                match = next((s for s in domain.subdomains if s.name.lower() == sub_name.lower()), None)
+                if match is None:
+                    errs.append(("subdomain_id", f"Subdomain '{sub_name}' does not exist in {domain.name}"))
+                else:
+                    data["subdomain_id"] = match.id
             data["ps_code"] = raw.get("ps_code")
             clean, field_errors = problem_service.validate_ps_data(data, user)
             for k, msg in field_errors.items():

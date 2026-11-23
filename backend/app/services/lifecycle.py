@@ -110,10 +110,28 @@ def transition(project, to, actor, reason=None, system=False):
     return project
 
 
+def close(project, actor):
+    """The domain lead (or an admin) closes a completed project. Closing is undone by reopening."""
+    if actor.role_name not in ("domain_lead", "admin"):
+        raise Forbidden("Only the domain lead can close a project")
+    if project.stage != "completed":
+        raise AppError("Only a completed project can be closed", 409)
+    if project.closed_at:
+        raise AppError("This project is already closed", 409)
+    project.closed_at, project.closed_by = utcnow(), actor.id
+    log_activity(project.id, actor.id, "project.closed")
+    audit(actor.id, "project.close", "project", project.id)
+    from app.services.project_service import member_user_ids, mentor_user_ids
+    notify(member_user_ids(project) | mentor_user_ids(project), "project_closed", "Project closed",
+           f"\u201c{project.title}\u201d has been closed by the domain lead.", f"/projects/{project.id}")
+    return project
+
+
 def reopen(project, to, actor, reason):
-    """Admin-only controlled rollback with a mandatory reason and an audit record."""
-    if actor.role_name != "admin":
-        raise Forbidden("Only an administrator can reopen a project")
+    """Controlled rollback by the domain lead (own domain, enforced by project scope) or an admin.
+    Needs a reason and leaves an audit record."""
+    if actor.role_name not in ("admin", "domain_lead"):
+        raise Forbidden("Only the domain lead or an administrator can reopen a project")
     if to not in REOPEN_TARGETS:
         raise AppError(f"A project can be reopened to: {', '.join(REOPEN_TARGETS)}", 422)
     if not reason or len(reason.strip()) < 5:
@@ -124,6 +142,7 @@ def reopen(project, to, actor, reason):
     old, now = project.stage, utcnow()
     project.stage = to
     project.completed_at = None
+    project.closed_at = project.closed_by = None
     if ORDER[to] < ORDER["final_evaluation"]:
         project.final_signed_off_by = None
     if ORDER[to] < ORDER["implementation"]:

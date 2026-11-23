@@ -4,14 +4,14 @@ export default {
   theme: {
     extend: {
       colors: {
-        // "Forest & gold": deep green sidebar, emerald primary and warm amber accent on a soft stone canvas.
-        navy: { 950: '#04201a', 900: '#0a2f27', 800: '#0f3d33', 700: '#14532d' },
-        brand: { DEFAULT: '#047857', dark: '#065f46', light: '#d1fae5' },
+        // "Burgundy & saffron": deep maroon sidebar, crimson primary and warm amber accent on a soft cream canvas.
+        navy: { 950: '#2a0a12', 900: '#3b0f1b', 800: '#4f1524', 700: '#6b1d31' },
+        brand: { DEFAULT: '#9f1239', dark: '#881337', light: '#ffe4e6' },
         accent: { DEFAULT: '#d97706', dark: '#b45309', light: '#fef3c7' },
-        canvas: '#f5f7f4',
+        canvas: '#faf6f2',
       },
       boxShadow: {
-        soft: '0 1px 2px rgba(4,32,26,0.05), 0 8px 24px -12px rgba(4,32,26,0.18)',
+        soft: '0 1px 2px rgba(42,10,18,0.05), 0 8px 24px -12px rgba(42,10,18,0.18)',
       },
       fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', '"Segoe UI"', 'Roboto', 'sans-serif'] },
     },

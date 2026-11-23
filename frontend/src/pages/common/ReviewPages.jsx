@@ -176,9 +176,12 @@ export function ProjectReviewsView({ projectId }) {
         actions={!student && <Link to={`/projects/${projectId}`} className="btn-secondary">Project details</Link>} />
       <div className="card flex flex-wrap items-center gap-x-8 gap-y-2 text-sm" aria-label="Overall performance">
         <div><div className="text-slate-500">Reviews completed</div><div className="text-lg font-semibold">{o.reviews_submitted} / {o.reviews_total}</div></div>
-        <div><div className="text-slate-500">Overall score</div><div className="text-lg font-semibold">{fmtNum(o.total_obtained)} / {fmtNum(o.total_max)}</div></div>
-        <div><div className="text-slate-500">Overall percentage</div><div className="text-lg font-semibold">{fmtNum(o.percentage)}%</div></div>
-        <div><div className="text-slate-500">Average of reviews</div><div className="text-lg font-semibold">{fmtNum(o.average_percentage)}%</div></div>
+        {!student && <>
+          <div><div className="text-slate-500">Overall score</div><div className="text-lg font-semibold">{fmtNum(o.total_obtained)} / {fmtNum(o.total_max)}</div></div>
+          <div><div className="text-slate-500">Overall percentage</div><div className="text-lg font-semibold">{fmtNum(o.percentage)}%</div></div>
+          <div><div className="text-slate-500">Average of reviews</div><div className="text-lg font-semibold">{fmtNum(o.average_percentage)}%</div></div>
+        </>}
+        {student && <p className="text-slate-500">Your mentor's remarks appear below once each review is completed.</p>}
       </div>
 
       {data.reviews.map((r) => (

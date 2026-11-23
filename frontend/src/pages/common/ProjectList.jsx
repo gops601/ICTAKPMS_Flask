@@ -43,7 +43,7 @@ export default function ProjectList({ title = 'Projects', subtitle = 'Progress, 
         </div>
         <Alert>{error}</Alert>
         <DataTable loading={loading} rows={items} empty="No projects found." columns={[
-          { key: 'title', header: 'Project', render: (p) => <div><div className="font-medium">{p.title}</div><div className="text-xs text-slate-500">{p.problem_statement.ps_code} · {p.batch.code}</div></div> },
+          { key: 'title', header: 'Project', render: (p) => <div><div className="font-medium">{p.title}</div><div className="text-xs text-slate-500"><span className="font-mono">{p.code}</span> · {p.problem_statement.ps_code} · {p.batch.code}</div></div> },
           { key: 'members', header: 'Student(s)', render: (p) => p.members.map((m) => m.name).join(', ') },
           { key: 'mentors', header: 'Mentor', render: (p) => p.mentors.length ? p.mentors.map((m) => m.name).join(', ') : <span className="text-slate-400">—</span> },
           { key: 'stage', header: 'Stage', render: (p) => <StageBadge stage={p.stage} label={p.stage_label} /> },

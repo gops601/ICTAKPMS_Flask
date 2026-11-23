@@ -11,8 +11,8 @@ body { @apply bg-canvas text-slate-800 antialiased; }
 .btn-secondary { @apply btn border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-brand/40 hover:bg-brand-light/40 hover:text-brand-dark; }
 .card { @apply rounded-2xl bg-white p-5 shadow-soft ring-1 ring-slate-200/70; }
 .label { @apply mb-1 block text-sm font-medium text-slate-700; }
-.hero-gradient { background: linear-gradient(135deg, #04201a 0%, #0a3a30 55%, #065f46 120%); }
-.banner-gradient { background: linear-gradient(120deg, #065f46 0%, #047857 50%, #b45309 150%); }
+.hero-gradient { background: linear-gradient(135deg, #2a0a12 0%, #4f1524 55%, #881337 120%); }
+.banner-gradient { background: linear-gradient(120deg, #881337 0%, #9f1239 50%, #b45309 150%); }
 
 .rich-content ul { @apply list-disc pl-6; }
 .rich-content ol { @apply list-decimal pl-6; }

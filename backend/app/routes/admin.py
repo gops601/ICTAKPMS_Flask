@@ -1,11 +1,12 @@
 from flask import request
+from sqlalchemy.exc import IntegrityError
 from flask_smorest import Blueprint
 
 from app.extensions import db
 from app.models import Domain, Role, User
 from app.permissions import current_user, roles_required
 from app.schemas.auth import user_to_dict
-from app.schemas.org import ActiveSchema, ResetPasswordAdminSchema, StaffCreateSchema
+from app.schemas.org import ActiveSchema, ResetPasswordAdminSchema, StaffCreateSchema, StaffCredentialsSchema
 from app.services import user_service
 from app.utils.audit import audit
 from app.utils.errors import AppError
@@ -52,6 +53,34 @@ def create_user(data):
     if generated:
         body["temporary_password"] = password  # shown once; the user must change it at first login
     return ok(body, "User created", 201)
+
+
+@bp.post("/users/credentials")
+@bp.doc(security=SEC, description="Issue fresh temporary passwords for mentors or domain leads who have not logged in "
+                                  "yet, for sharing. Returned once; never stored in clear text.")
+@bp.arguments(StaffCredentialsSchema)
+@roles_required("admin")
+def issue_staff_credentials(data):
+    issued, skipped = user_service.issue_staff_credentials(data["role"], data["user_ids"])
+    audit(current_user().id, "staff.credentials_issued", "user", None, {"role": data["role"], "issued": len(issued), "skipped": len(skipped)})
+    db.session.commit()
+    return ok({"credentials": issued, "skipped": skipped, "role": data["role"]}, f"{len(issued)} credential(s) issued")
+
+
+@bp.delete("/users/<int:user_id>")
+@bp.doc(security=SEC, description="Permanently delete a student, mentor, domain lead or administrator. Refused (409) when "
+                                  "that would orphan real work; deactivate instead.")
+@roles_required("admin")
+def delete_user(user_id):
+    user = user_service.get_user_or_404(user_id)
+    try:
+        info = user_service.delete_user(user, current_user())
+        audit(current_user().id, "user.delete", "user", user_id, info)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        raise AppError("This account is still referenced by other records. Deactivate it instead.", 409)
+    return ok(message=f"{info['name']} was deleted")
 
 
 @bp.post("/users/<int:user_id>/reset-password")

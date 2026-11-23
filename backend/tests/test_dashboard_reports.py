@@ -215,9 +215,10 @@ def test_student_dashboard(client, world):
     assert d["domain"] == "AI & ML" and d["batch"]["code"] == "B1" and d["mentors"] == ["Mia One"]
     assert d["srs_status"] == "approved" and d["github_url"] == "https://github.com/o/alpha"
     assert [(r["label"], r["status"]) for r in d["reviews"]] == [("Week 1", "submitted"), ("Week 2", "submitted"), ("Week 3", "pending"), ("Week 4", "pending")]
-    assert d["reviews"][0]["percentage"] == 80.0 and d["reviews"][1]["obtained"] == 50.0
+    # students never receive marks or percentages, only the mentor's remarks
+    assert all({"percentage", "obtained", "max"}.isdisjoint(r) for r in d["reviews"]) and "overall_score_pct" not in d
     assert d["latest_mentor_feedback"]["remarks"] == "Needs work" and d["latest_mentor_feedback"]["week_no"] == 2
-    assert d["scrum"] == {"total": 2, "completed": 1, "overdue": 1} and d["overall_score_pct"] == 65.0
+    assert d["scrum"] == {"total": 2, "completed": 1, "overdue": 1}
     assert d["timeline"] == []                                             # fixture created no transitions
 
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, History, RotateCcw } from 'lucide-react'
+import { AlertTriangle, History, Lock, RotateCcw } from 'lucide-react'
 import { batchMentorService, projectService, psService } from '../services/adminService'
 import { errorMessage } from '../services/api'
 import { useAuth } from '../context/AuthContext'
@@ -10,6 +10,8 @@ import Spinner from './Spinner'
 import StatusBadge from './StatusBadge'
 import { ProgressBar, StageBadge } from './ProjectBadges'
 import GithubPanel from './GithubPanel'
+import FeedbackPanel from './FeedbackPanel'
+import ConfirmDialog from './ConfirmDialog'
 
 const STAGE_LABEL = {
   allocated: 'Project Allocated', srs_preparation: 'SRS Preparation', srs_submitted: 'SRS Submitted',
@@ -33,10 +35,11 @@ function describe(item) {
     return item.from ? `${STAGE_LABEL[item.from]} → ${to}` : `Project allocated (${to})`
   }
   const map = {
-    'problem_statement.changed': 'Problem statement changed',
+    'problem_statement.changed': 'Project changed',
     'mentor.changed': 'Mentor changed',
-    'settings.mentor_board_edit': `Mentor board editing ${item.details?.enabled ? 'enabled' : 'disabled'}`,
     'project.reopened': 'Project reopened',
+    'project.closed': 'Project closed by the domain lead',
+    'feedback.sent': 'Mentor sent feedback',
   }
   return map[item.action] || item.action
 }
@@ -46,11 +49,12 @@ export default function ProjectView({ id }) {
   const { user } = useAuth()
   const role = user.role
   const canManage = role === 'admin' || role === 'domain_lead'
+  const canClose = role === 'domain_lead' || role === 'admin'
   const [project, setProject] = useState(null)
   const [timeline, setTimeline] = useState([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
-  const [modal, setModal] = useState(null) // 'reopen' | 'mentor' | 'problem' | { transition }
+  const [modal, setModal] = useState(null) // 'reopen' | 'close' | 'mentor' | 'problem' | { transition }
   const [form, setForm] = useState({})
   const [options, setOptions] = useState([])
   const [modalError, setModalError] = useState('')
@@ -91,13 +95,17 @@ export default function ProjectView({ id }) {
         <div>
           <h1 className="text-xl font-semibold text-slate-900">{project.title}</h1>
           <p className="text-sm text-slate-500">
-            {project.problem_statement.ps_code} · Batch {project.batch.code}{project.batch.domain ? ` · ${project.batch.domain.name}` : ''}
+            <span className="font-mono text-slate-700">{project.code}</span> · {project.problem_statement.ps_code} · Batch {project.batch.code}{project.batch.domain ? ` · ${project.batch.domain.name}` : ''}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {project.is_delayed && <StatusBadge tone="red">Delayed</StatusBadge>}
           <StageBadge stage={project.stage} label={project.stage_label} />
-          {role === 'admin' && project.stage !== 'allocated' && (
+          {project.is_closed && <StatusBadge tone="grey"><span className="inline-flex items-center gap-1"><Lock className="h-3 w-3" />Closed</span></StatusBadge>}
+          {canClose && project.stage === 'completed' && !project.is_closed && (
+            <button className="btn-primary" onClick={() => { setModalError(''); setModal('close') }}><Lock className="h-4 w-4" />Close project</button>
+          )}
+          {canClose && project.stage !== 'allocated' && (
             <button className="btn-secondary" onClick={() => { setForm({ to: 'implementation', reason: '' }); setModalError(''); setModal('reopen') }}>
               <RotateCcw className="h-4 w-4" />Reopen
             </button>
@@ -138,7 +146,7 @@ export default function ProjectView({ id }) {
             {project.implementation_started_at && <div><dt className="text-slate-500">Implementation started</dt><dd>{fmtTime(project.implementation_started_at)}</dd></div>}
             {project.github_url && <div><dt className="text-slate-500">GitHub</dt><dd><a className="text-brand underline" href={project.github_url} target="_blank" rel="noreferrer">{project.github_url}</a></dd></div>}
           </dl>
-          <div className="mt-4"><Link className="text-sm text-brand hover:underline" to={`/problem-statements/${project.problem_statement.id}`}>View problem statement →</Link></div>
+          <div className="mt-4"><Link className="text-sm text-brand hover:underline" to={`/project-shelf/${project.problem_statement.id}`}>View on Project Shelf →</Link></div>
         </div>
         <div className="card space-y-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">People</h2>
@@ -153,7 +161,7 @@ export default function ProjectView({ id }) {
           {canManage && (
             <div className="flex flex-wrap gap-2">
               <button className="btn-secondary" onClick={openMentor}>Assign mentor</button>
-              {canChangePs && <button className="btn-secondary" onClick={openProblem}>Change problem</button>}
+              {canChangePs && <button className="btn-secondary" onClick={openProblem}>Change project</button>}
             </div>
           )}
         </div>
@@ -203,13 +211,7 @@ export default function ProjectView({ id }) {
         </ul>
       </div>
 
-      {canManage && (
-        <label className="card flex items-center gap-3 text-sm">
-          <input type="checkbox" checked={project.mentor_can_edit_board} disabled={busy}
-            onChange={(e) => act(() => projectService.setBoardPermission(project.id, e.target.checked), false)} />
-          <span>Allow the mentor to change task statuses on this project's Scrum board <span className="text-slate-500">(off by default)</span></span>
-        </label>
-      )}
+      <FeedbackPanel project={project} canSend={role === 'mentor'} />
 
       <div className="card">
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500"><History className="h-4 w-4" />Activity timeline</h2>
@@ -224,6 +226,11 @@ export default function ProjectView({ id }) {
         </ol>
       </div>
 
+      {modal === 'close' && (
+        <ConfirmDialog confirmLabel="Close project" busy={busy}
+          message="Close this completed project? Everyone involved is notified. You can reopen it later if needed."
+          onConfirm={() => act(() => projectService.close(project.id))} onCancel={() => setModal(null)} />
+      )}
       {modal === 'reopen' && (
         <Modal title="Reopen project" onClose={() => setModal(null)}
           footer={<><button className="btn-secondary" onClick={() => setModal(null)}>Cancel</button>
@@ -256,12 +263,12 @@ export default function ProjectView({ id }) {
         </Modal>
       )}
       {modal === 'problem' && (
-        <Modal title="Change problem statement" onClose={() => setModal(null)}
+        <Modal title="Change project" onClose={() => setModal(null)}
           footer={<><button className="btn-secondary" onClick={() => setModal(null)}>Cancel</button>
             <button className="btn-primary" disabled={busy || !form.ps_id} onClick={() => act(() => projectService.reassignProblem(project.id, Number(form.ps_id)))}>Change</button></>}>
           <div className="space-y-3">
             <Alert>{modalError}</Alert>
-            <label htmlFor="pp" className="label">New problem statement</label>
+            <label htmlFor="pp" className="label">New project (from the Project Shelf)</label>
             <select id="pp" className="input" value={form.ps_id} onChange={(e) => setForm({ ps_id: e.target.value })}>
               <option value="">Select…</option>{options.map((p) => <option key={p.id} value={p.id}>{p.ps_code} – {p.title}</option>)}
             </select>

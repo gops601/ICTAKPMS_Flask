@@ -20,6 +20,8 @@ export const domainService = {
   update: (id, body) => api.put(`/domains/${id}`, body).then(d),
   setActive: (id, is_active) => api.patch(`/domains/${id}/active`, { is_active }).then(d),
   setLeads: (id, user_ids) => api.put(`/domains/${id}/leads`, { user_ids }).then(d),
+  addSubdomain: (id, name) => api.post(`/domains/${id}/subdomains`, { name }).then(d),
+  updateSubdomain: (subId, body) => api.patch(`/domains/subdomains/${subId}`, body).then(d),
 }
 
 export const batchService = {
@@ -28,6 +30,7 @@ export const batchService = {
   create: (body) => api.post('/batches', body).then(d),
   update: (id, body) => api.put(`/batches/${id}`, body).then(d),
   setStatus: (id, status) => api.patch(`/batches/${id}/status`, { status }).then(d),
+  remove: (id, withStudents = false) => api.delete(`/batches/${id}`, { params: withStudents ? { with_students: 1 } : undefined }).then(d),
   setProjectDates: (id, project_start_date, project_end_date) => api.put(`/batches/${id}/project-dates`, { project_start_date, project_end_date }).then(d),
 }
 
@@ -41,6 +44,8 @@ export const userService = {
   list: (params) => api.get('/admin/users', { params }).then(withMeta),
   create: (body) => api.post('/admin/users', body).then(d),
   resetPassword: (id) => api.post(`/admin/users/${id}/reset-password`, {}).then(d),
+  credentials: (role, user_ids) => api.post('/admin/users/credentials', { role, user_ids }).then(d),
+  remove: (id) => api.delete(`/admin/users/${id}`).then(d),
   setActive: (id, is_active) => api.patch(`/admin/users/${id}/active`, { is_active }).then(d),
   mentors: (params) => api.get('/mentors', { params }).then(withMeta),
 }
@@ -117,10 +122,16 @@ export const projectService = {
   timeline: (id) => api.get(`/projects/${id}/timeline`).then(d),
   allocate: (body) => api.post('/project-allocation', body).then(d),
   transition: (id, to, reason) => api.post(`/projects/${id}/transition`, { to, reason }).then(d),
+  close: (id) => api.post(`/projects/${id}/close`).then(d),
   reopen: (id, to, reason) => api.post(`/projects/${id}/reopen`, { to, reason }).then(d),
   setMentor: (id, mentor_id) => api.put(`/projects/${id}/mentor`, { mentor_id }).then(d),
   setBoardPermission: (id, mentor_can_edit_board) => api.patch(`/projects/${id}/settings`, { mentor_can_edit_board }).then(d),
   reassignProblem: (id, problem_statement_id) => api.post(`/projects/${id}/reassign-problem`, { problem_statement_id }).then(d),
+}
+
+export const feedbackService = {
+  list: (projectId) => api.get(`/projects/${projectId}/feedback`).then(d),
+  send: (projectId, message, student_id) => api.post(`/projects/${projectId}/feedback`, { message, student_id }).then(d),
 }
 
 export const batchMentorService = {

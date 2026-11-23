@@ -101,10 +101,35 @@ def test_update_status_filters_and_immutable_id(client, people):
 
 
 def test_non_managers_cannot_list_or_create(client, make_user, login):
-    make_user("mentor", "m@x.com")
-    h = login("m@x.com")
+    make_user("student", "s@x.com")
+    h = login("s@x.com")
     assert client.get("/api/problem-statements", headers=h).status_code == 403
     assert client.post("/api/problem-statements", headers=h, json=ps_body()).status_code == 403
+
+
+def test_mentor_lists_only_own_batch_domains_and_cannot_create(client, make_user, login, people):
+    make_ps(client, people["lead_a"], ps_code="A1")
+    make_ps(client, people["lead_b"], ps_code="B1", domain_id=domain("IOT").id)
+    mu = make_user("mentor", "m@x.com")
+    ou = db.session.query(OrganisationalUnit).first()
+    from app.models import BatchMentor, Mentor
+    batch = Batch(code="MB", name="MB", ou_id=ou.id, domain_id=domain("AIML").id)
+    m = Mentor(user_id=mu.id)
+    db.session.add_all([batch, m])
+    db.session.flush()
+    db.session.add(BatchMentor(batch_id=batch.id, mentor_id=m.id))
+    db.session.commit()
+    h = login("m@x.com")
+    codes = {p["ps_code"] for p in client.get("/api/problem-statements", headers=h).get_json()["data"]}
+    assert codes == {"A1"}
+    assert client.get("/api/problem-statements/industries", headers=h).status_code == 200   # mentors can use the shelf's industry filter
+    assert client.post("/api/problem-statements", headers=h, json=ps_body(ps_code="Z")).status_code == 403
+
+
+def test_blank_ps_code_gets_generated_ict_id(client, people):
+    d = client.post("/api/problem-statements", headers=people["lead_a"], json=ps_body(ps_code="")).get_json()["data"]
+    code = d["ps_code"]
+    assert code.startswith("ICT_PS_") and any(c.isdigit() for c in code) and any(c.isalpha() for c in code[7:])
 
 
 # ------------------------------------------------------------------------ attachments

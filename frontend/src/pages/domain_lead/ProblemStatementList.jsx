@@ -16,12 +16,14 @@ const DIFF_TONE = { easy: 'green', medium: 'orange', hard: 'red' }
 
 export default function ProblemStatementList() {
   const base = useBasePath()
+  const readOnly = base === '/mentor'  // mentors browse the shelf; leads and admins manage it
   const [q, setQ] = useState('')
   const [domainId, setDomainId] = useState('')
   const [difficulty, setDifficulty] = useState('')
   const [status, setStatus] = useState('')
   const [sourceType, setSourceType] = useState('')
   const [industry, setIndustry] = useState('')
+  const [subdomainId, setSubdomainId] = useState('')
   const [industries, setIndustries] = useState([])
   const [page, setPage] = useState(1)
   const [sort, setSort] = useState({ key: 'created', order: 'desc' })
@@ -34,7 +36,7 @@ export default function ProblemStatementList() {
   useEffect(() => { domainService.list().then(setDomains).catch(() => {}); psService.industries().then(setIndustries).catch(() => {}) }, [])
   const { items, meta, loading, error, reload } = useList(psService.list, {
     q: dq, domain_id: domainId || undefined, difficulty: difficulty || undefined, status: status || undefined,
-    source_type: sourceType || undefined, industry: industry || undefined,
+    source_type: sourceType || undefined, industry: industry || undefined, subdomain_id: subdomainId || undefined,
     page, sort: sort.key, order: sort.order,
   })
   const changeType = (e) => { setSourceType(e.target.value); if (e.target.value === 'internal') setIndustry(''); setPage(1) }
@@ -49,16 +51,20 @@ export default function ProblemStatementList() {
 
   return (
     <div>
-      <PageHeader title="Problem Statements" subtitle="The catalogue of project problem statements for your domain(s)."
-        actions={<>
-          <Link to={`${base}/problem-statements/upload`} className="btn-secondary"><Upload className="h-4 w-4" />Bulk upload</Link>
-          <Link to={`${base}/problem-statements/new`} className="btn-primary"><Plus className="h-4 w-4" />New problem statement</Link>
+      <PageHeader title="Project Shelf" subtitle={readOnly ? 'Every project on the shelf for the domains of your batches.' : 'Every project created for your domain(s), ready to be allocated.'}
+        actions={!readOnly && <>
+          <Link to={`${base}/project-shelf/upload`} className="btn-secondary"><Upload className="h-4 w-4" />Bulk upload</Link>
+          <Link to={`${base}/project-shelf/new`} className="btn-primary"><Plus className="h-4 w-4" />New project</Link>
         </>} />
       <div className="card">
-        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <input className="input" placeholder="Search title or ID…" aria-label="Search problem statements" value={q} onChange={reset(setQ)} />
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <input className="input" placeholder="Search title or ID…" aria-label="Search projects" value={q} onChange={reset(setQ)} />
           <select className="input" aria-label="Filter by domain" value={domainId} onChange={reset(setDomainId)}>
             <option value="">All domains</option>{domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+          <select className="input" aria-label="Filter by subdomain" value={subdomainId} onChange={reset(setSubdomainId)}>
+            <option value="">All subdomains</option>
+            {domains.filter((d) => !domainId || String(d.id) === String(domainId)).flatMap((d) => (d.subdomains || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>))}
           </select>
           <select className="input" aria-label="Filter by statement type" value={sourceType} onChange={changeType}>
             <option value="">All types</option><option value="internal">Internal</option><option value="industry">Industry</option>
@@ -74,10 +80,10 @@ export default function ProblemStatementList() {
           </select>
         </div>
         <Alert>{error || actionError}</Alert>
-        <DataTable loading={loading} rows={items} sort={sort} onSort={onSort} empty="No problem statements yet." columns={[
+        <DataTable loading={loading} rows={items} sort={sort} onSort={onSort} empty="No projects on the shelf yet." columns={[
           { key: 'ps_code', header: 'ID', sortKey: 'ps_code' },
           { key: 'title', header: 'Title', sortKey: 'title' },
-          { key: 'domain', header: 'Domain', render: (p) => p.domain.name },
+          { key: 'domain', header: 'Domain', render: (p) => <div>{p.domain.name}{p.subdomain && <div className="text-xs text-slate-500">{p.subdomain.name}</div>}</div> },
           { key: 'source_type', header: 'Type', render: (p) => (p.source_type === 'industry'
             ? <div><StatusBadge tone="blue">Industry</StatusBadge><div className="mt-0.5 text-xs text-slate-500">{p.industry}</div></div>
             : <StatusBadge tone="green">Internal</StatusBadge>) },
@@ -86,9 +92,9 @@ export default function ProblemStatementList() {
           { key: 'status', header: 'Status', render: (p) => <StatusBadge status={p.status} /> },
           { key: 'actions', header: 'Actions', render: (p) => (
             <div className="flex gap-2">
-              <Link className="btn-secondary" to={`${base}/problem-statements/${p.id}`}><Eye className="h-4 w-4" />View</Link>
-              <Link className="btn-secondary" to={`${base}/problem-statements/${p.id}/edit`}><Pencil className="h-4 w-4" />Edit</Link>
-              <button className="btn-secondary" onClick={() => setToggle(p)}>{p.status === 'active' ? 'Deactivate' : 'Activate'}</button>
+              <Link className="btn-secondary" to={`${base}/project-shelf/${p.id}`}><Eye className="h-4 w-4" />View</Link>
+              {!readOnly && <Link className="btn-secondary" to={`${base}/project-shelf/${p.id}/edit`}><Pencil className="h-4 w-4" />Edit</Link>}
+              {!readOnly && <button className="btn-secondary" onClick={() => setToggle(p)}>{p.status === 'active' ? 'Deactivate' : 'Activate'}</button>}
             </div>
           ) },
         ]} />

@@ -244,14 +244,17 @@ describe('project reviews view', () => {
 
   it('student sees overall performance, full published evaluations, and nothing from unpublished weeks', async () => {
     mockUser = { id: 1, name: 'Stu', role: 'student' }
-    svc.reviewService.forProject.mockResolvedValue(data())
+    // the API gives students summary: null and criteria without marks
+    const studentView = { ...submitted(), id: 1, week_no: 1, summary: null, criteria: [{ id: 5, name: 'Problem Understanding', remarks: 'Cover the use cases' }], student_remarks: [] }
+    svc.reviewService.forProject.mockResolvedValue(data({ reviews: [studentView, ...data().reviews.slice(1)] }))
     renderView()
     const overall = await screen.findByLabelText('Overall performance')
     expect(overall).toHaveTextContent('1 / 4')
-    expect(overall).toHaveTextContent('39 / 50')
-    expect(overall).toHaveTextContent('78%')
+    expect(overall).not.toHaveTextContent('39 / 50')                       // students never see scores
+    expect(overall).not.toHaveTextContent('78%')
     const w1 = screen.getByRole('region', { name: 'Week 1' })
-    expect(within(w1).getByText('Problem Understanding')).toBeInTheDocument()
+    expect(w1).not.toHaveTextContent(/\d+\s*\/\s*\d+|%/)                    // no marks, totals or percentages
+    expect(within(w1).getByText('Solid work')).toBeInTheDocument()            // the mentor's written feedback is shown
     expect(within(w1).getByText('Read IEEE 830')).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'Week 2' })).getByText('Overdue')).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'Week 3' })).getByText(/mentor is correcting this evaluation/i)).toBeInTheDocument()

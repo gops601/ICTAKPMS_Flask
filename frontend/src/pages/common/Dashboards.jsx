@@ -124,7 +124,7 @@ export function AdminDashboard() {
           <>
             <StatGrid>
               <StatCard label="OUs" value={c.ous} /><StatCard label="Domains" value={c.domains} /><StatCard label="Batches" value={c.batches} />
-              <StatCard label="Students" value={c.students} /><StatCard label="Mentors" value={c.mentors} /><StatCard label="Problem statements" value={c.problem_statements} />
+              <StatCard label="Students" value={c.students} /><StatCard label="Mentors" value={c.mentors} /><StatCard label="Projects on shelf" value={c.problem_statements} />
               <StatCard label="In progress" value={c.in_progress} /><StatCard label="Awaiting SRS approval" value={c.awaiting_srs_approval} />
               <StatCard label="Pending weekly reviews" value={c.pending_reviews} /><StatCard label="Completed" value={c.completed} tone="good" />
               <StatCard label="Delayed" value={c.delayed} tone={c.delayed ? 'critical' : 'default'} /><StatCard label="Total projects" value={c.projects_total} />
@@ -172,7 +172,7 @@ export function LeadDashboard() {
           <>
             <StatGrid>
               <StatCard label="Batches" value={c.batches} /><StatCard label="Students" value={c.students} /><StatCard label="Mentors" value={c.mentors} />
-              <StatCard label="Problem statements" value={c.problem_statements} /><StatCard label="Projects allocated" value={c.projects_allocated} />
+              <StatCard label="Projects on shelf" value={c.problem_statements} /><StatCard label="Projects allocated" value={c.projects_allocated} />
               <StatCard label="SRS pending approval" value={c.srs_pending_approval} /><StatCard label="Under implementation" value={c.under_implementation} />
               <StatCard label="Weekly reviews pending" value={c.reviews_pending} /><StatCard label="Completed" value={c.completed} tone="good" />
               <StatCard label="Delayed" value={c.delayed} tone={c.delayed ? 'critical' : 'default'} />
@@ -260,7 +260,6 @@ export function StudentDashboard() {
           return <div className="card text-sm text-slate-600">No project has been allocated to you yet{d.batch ? ` (batch ${d.batch.code})` : ''}. You will be notified as soon as one is.</div>
         }
         const p = d.project
-        const chartRows = d.reviews.filter((r) => r.status === 'submitted').map((r) => ({ label: r.label, percentage: r.percentage, obtained: r.obtained, max: r.max }))
         const SRS_TONE = { approved: 'green', submitted: 'blue', under_review: 'orange', changes_requested: 'red', not_submitted: 'grey' }
         return (
           <>
@@ -282,19 +281,15 @@ export function StudentDashboard() {
               <div className="flex flex-wrap gap-2 text-sm">
                 <Link className="btn-secondary" to="/student/project">Project</Link><Link className="btn-secondary" to="/student/srs">SRS</Link>
                 <Link className="btn-secondary" to="/student/scrum">Scrum board</Link><Link className="btn-secondary" to="/student/reviews">Weekly reviews</Link>
-                <Link className="btn-secondary" to={`/problem-statements/${d.problem_statement.id}`}>Problem statement</Link>
+                <Link className="btn-secondary" to={`/project-shelf/${d.problem_statement.id}`}>Project details</Link>
               </div>
             </section>
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <ChartCard title="Weekly review scores" subtitle={d.overall_score_pct == null ? 'No review has been published yet' : `Overall ${d.overall_score_pct}%`} empty={chartRows.length === 0}
-                table={{ columns: [{ key: 'label', label: 'Week' }, { key: 'obtained', label: 'Marks' }, { key: 'max', label: 'Out of' }, { key: 'percentage', label: '%' }], rows: chartRows }}>
-                <Bars data={chartRows} categoryKey="label" series={[{ key: 'percentage', label: 'Score' }]} domain={[0, 100]} unit="%" />
-              </ChartCard>
               <section className="card space-y-2" aria-label="Review status">
                 <h3 className="text-sm font-semibold text-slate-900">Review status</h3>
                 <ul className="grid grid-cols-2 gap-2 text-sm">{d.reviews.map((r) => (
                   <li key={r.week_no} className="rounded-lg border border-slate-200 p-2"><div className="font-medium">{r.label}</div><div className="text-xs text-slate-500">Due {fmtDate(r.due_date)}</div>
-                    <StatusBadge tone={r.status === 'submitted' ? 'green' : 'grey'}>{r.status === 'submitted' ? `${r.percentage}%` : 'Pending'}</StatusBadge></li>))}</ul>
+                    <StatusBadge tone={r.status === 'submitted' ? 'green' : 'grey'}>{r.status === 'submitted' ? 'Reviewed' : 'Pending'}</StatusBadge></li>))}</ul>
               </section>
               <section className="card space-y-2" aria-label="Latest mentor feedback">
                 <h3 className="text-sm font-semibold text-slate-900">Latest mentor feedback</h3>

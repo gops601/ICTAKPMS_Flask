@@ -160,7 +160,7 @@ export default function BatchDetail() {
         actions={<>
           <StatusBadge status={batch.status} />
           {canManage && <button className="btn-secondary" onClick={() => reportService.batchDetailed(batch.id).catch((e) => setError(errorMessage(e, 'Download failed')))}><Download className="h-4 w-4" />Detailed report</button>}
-          {canManage && batch.status === 'active' && <Link to={`${base}/batches/${batch.id}/allocate`} className="btn-primary"><Plus className="h-4 w-4" />Allocate projects</Link>}
+          {(canManage || user.role === 'mentor') && batch.status === 'active' && <Link to={`${base}/batches/${batch.id}/allocate`} className="btn-primary"><Plus className="h-4 w-4" />Allocate projects</Link>}
         </>} />
       <Alert>{error}</Alert>
       <ProjectDatesCard batch={batch} canManage={canManage} onSaved={(b) => setBatch((old) => ({ ...old, ...b }))} />

@@ -43,14 +43,14 @@ import { ScrumOverviewPage, ScrumProjectPage, StudentScrumPage } from './pages/c
 import { EvaluationQueuePage, ProjectReviewsPage, ReviewPage, StudentReviewsPage, TemplatesPage } from './pages/common/ReviewPages'
 import { ROLE_HOME } from './utils/roles'
 
-/** Problem statement pages are shared by admins and domain leads (access is enforced by the API). */
+/** Project Shelf pages are shared by admins and domain leads (access is enforced by the API). */
 const psRoutes = (base) => (
   <>
-    <Route path={`${base}/problem-statements`} element={<ProblemStatementList />} />
-    <Route path={`${base}/problem-statements/new`} element={<ProblemStatementForm />} />
-    <Route path={`${base}/problem-statements/upload`} element={<ProblemStatementUpload />} />
-    <Route path={`${base}/problem-statements/:id`} element={<ProblemStatementDetail />} />
-    <Route path={`${base}/problem-statements/:id/edit`} element={<ProblemStatementForm />} />
+    <Route path={`${base}/project-shelf`} element={<ProblemStatementList />} />
+    <Route path={`${base}/project-shelf/new`} element={<ProblemStatementForm />} />
+    <Route path={`${base}/project-shelf/upload`} element={<ProblemStatementUpload />} />
+    <Route path={`${base}/project-shelf/:id`} element={<ProblemStatementDetail />} />
+    <Route path={`${base}/project-shelf/:id/edit`} element={<ProblemStatementForm />} />
   </>
 )
 
@@ -78,7 +78,7 @@ export default function App() {
           <Route path="/scrum/:projectId" element={<ScrumProjectPage />} />
           <Route path="/reviews/project/:projectId" element={<ProjectReviewsPage />} />
           <Route path="/reviews/:reviewId" element={<ReviewPage />} />
-          <Route path="/problem-statements/:id" element={<ProblemStatementDetail />} />
+          <Route path="/project-shelf/:id" element={<ProblemStatementDetail />} />
 
           <Route element={<RoleRoute roles={['admin']} />}>
             <Route path="/admin" element={<AdminDashboard />} />
@@ -123,7 +123,10 @@ export default function App() {
             <Route path="/mentor/reports" element={<ReportsPage title="Project Reports" />} />
             <Route path="/mentor/batches" element={<MyBatches />} />
             <Route path="/mentor/batches/:id" element={<BatchDetail />} />
+            <Route path="/mentor/batches/:id/allocate" element={<AllocatePage />} />
             <Route path="/mentor/proposals" element={<ProposalApprovals />} />
+            <Route path="/mentor/project-shelf" element={<ProblemStatementList />} />
+            <Route path="/mentor/project-shelf/:id" element={<ProblemStatementDetail />} />
             <Route path="/mentor/srs" element={<SrsQueuePage />} />
             <Route path="/mentor/scrum" element={<ScrumOverviewPage />} />
             <Route path="/mentor/evaluations" element={<EvaluationQueuePage />} />
@@ -135,6 +138,7 @@ export default function App() {
             <Route path="/student" element={<StudentDashboard />} />
             <Route path="/student/project" element={<MyProject />} />
             <Route path="/student/proposal" element={<MyProposal />} />
+            <Route path="/student/feedback" element={<Navigate to="/student/project" replace />} />
             <Route path="/student/srs" element={<StudentSrsPage />} />
             <Route path="/student/scrum" element={<StudentScrumPage />} />
             <Route path="/student/reviews" element={<StudentReviewsPage />} />

@@ -26,3 +26,16 @@ export function rowFromStudent(student) {
     batch_code: student.batch.code, batch_name: student.batch.name, temporary_password: student.temporary_password,
   }
 }
+
+const STAFF_HEADERS = ['Name', 'Login ID (email)', 'Temporary password', 'Role', 'Designation', 'Company', 'Details', 'Phone', 'Login URL']
+const ROLE_NAME = { mentor: 'Mentor', domain_lead: 'Domain Lead' }
+
+/** CSV of mentor / domain lead logins (one row each) with their one-time temporary passwords. */
+export function staffCredentialsCsv(rows, loginUrl = window.location.origin) {
+  const lines = rows.map((r) => [r.name, r.email, r.temporary_password, ROLE_NAME[r.role] || r.role, r.designation, r.company, r.details, r.phone, loginUrl].map(cell).join(','))
+  return `\uFEFF${[STAFF_HEADERS.map(cell).join(','), ...lines].join('\r\n')}\r\n`
+}
+
+export function downloadStaffCredentials(rows, filename = 'credentials.csv') {
+  downloadTextFile(staffCredentialsCsv(rows), filename)
+}

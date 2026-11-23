@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Plus } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { domainService, psService } from '../../services/adminService'
 import { errorMessage, fieldErrors } from '../../services/api'
@@ -16,7 +17,7 @@ const RICH = [
   ['suggested_technologies', 'Suggested technologies'], ['dataset_info', 'Dataset information'], ['required_skills', 'Required skills'],
 ]
 const EMPTY = {
-  ps_code: '', title: '', domain_id: '', source_type: 'internal', industry: '', difficulty: 'medium', estimated_duration: '', status: 'active',
+  ps_code: '', title: '', domain_id: '', subdomain_id: '', source_type: 'internal', industry: '', difficulty: 'medium', estimated_duration: '', status: 'active',
   ...Object.fromEntries(RICH.map(([k]) => [k, ''])),
 }
 
@@ -27,6 +28,8 @@ export default function ProblemStatementForm() {
   const navigate = useNavigate()
   const [domains, setDomains] = useState([])
   const [industries, setIndustries] = useState([])
+  const [newSub, setNewSub] = useState('')
+  const [subBusy, setSubBusy] = useState(false)
   const [form, setForm] = useState(EMPTY)
   const [files, setFiles] = useState({ datasets: [], documents: [] })
   const [loading, setLoading] = useState(true)
@@ -38,7 +41,7 @@ export default function ProblemStatementForm() {
   const load = useCallback(async () => {
     try {
       const ps = await psService.get(id)
-      setForm({ ...EMPTY, ...Object.fromEntries(Object.keys(EMPTY).map((k) => [k, k === 'domain_id' ? ps.domain.id : ps[k] ?? ''])) })
+      setForm({ ...EMPTY, ...Object.fromEntries(Object.keys(EMPTY).map((k) => [k, k === 'domain_id' ? ps.domain.id : k === 'subdomain_id' ? ps.subdomain?.id ?? '' : ps[k] ?? ''])) })
       setFiles({ datasets: ps.datasets, documents: ps.documents })
     } catch (e) { setError(errorMessage(e)) }
   }, [id])
@@ -54,17 +57,29 @@ export default function ProblemStatementForm() {
   }, [editing, load])
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
+  const domain = domains.find((d) => String(d.id) === String(form.domain_id))
+  const subdomains = (domain?.subdomains || []).filter((s) => s.is_active || String(s.id) === String(form.subdomain_id))
+  const needsSub = (domain?.subdomains || []).some((s) => s.is_active)
+  const addSubdomain = async () => {
+    if (newSub.trim().length < 2) return
+    setSubBusy(true); setError('')
+    try {
+      const sd = await domainService.addSubdomain(domain.id, newSub)
+      setDomains((list) => list.map((d) => (d.id === domain.id ? { ...d, subdomains: [...(d.subdomains || []), sd] } : d)))
+      setForm((f) => ({ ...f, subdomain_id: sd.id })); setNewSub('')
+    } catch (e) { setError(errorMessage(e)) } finally { setSubBusy(false) }
+  }
   const setRich = (k) => (html) => setForm((f) => ({ ...f, [k]: html }))
 
   const submit = async (e) => {
     e.preventDefault(); setBusy(true); setError(''); setErrs({}); setSaved(false)
-    const body = { ...form, domain_id: Number(form.domain_id), estimated_duration: form.estimated_duration || null,
+    const body = { ...form, domain_id: Number(form.domain_id), subdomain_id: form.subdomain_id ? Number(form.subdomain_id) : null, estimated_duration: form.estimated_duration || null,
       industry: form.source_type === 'industry' ? form.industry : null }
     try {
       if (editing) { await psService.update(id, body); setSaved(true) }
       else {
         const created = await psService.create(body)
-        navigate(`${base}/problem-statements/${created.id}/edit`, { replace: true })
+        navigate(`${base}/project-shelf/${created.id}/edit`, { replace: true })
       }
     } catch (err) { setError(errorMessage(err)); setErrs(fieldErrors(err)); window.scrollTo(0, 0) } finally { setBusy(false) }
   }
@@ -74,21 +89,33 @@ export default function ProblemStatementForm() {
 
   return (
     <div className="max-w-4xl space-y-4">
-      <PageHeader title={editing ? `Edit ${form.ps_code}` : 'New problem statement'}
+      <PageHeader title={editing ? `Edit ${form.ps_code}` : 'New project'}
         subtitle={editing ? 'Update details and manage datasets and reference documents.' : 'Save first; datasets and documents can be attached right after.'}
-        actions={editing && <Link to={`${base}/problem-statements/${id}`} className="btn-secondary">View</Link>} />
+        actions={editing && <Link to={`${base}/project-shelf/${id}`} className="btn-secondary">View</Link>} />
       <form onSubmit={submit} className="card space-y-4">
         <Alert>{error}</Alert>
         {saved && <Alert type="success">Saved.</Alert>}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div><label htmlFor="ps_code" className="label">Problem statement ID *</label>
-            <input id="ps_code" className="input" required disabled={editing} value={form.ps_code} onChange={set('ps_code')} />{err('ps_code')}</div>
+          <div><label htmlFor="ps_code" className="label">Project ID</label>
+            <input id="ps_code" className="input" disabled={editing} placeholder="Leave blank to auto-generate (ICT_PS_…)" value={form.ps_code} onChange={set('ps_code')} />{err('ps_code')}</div>
           <div><label htmlFor="title" className="label">Project title *</label>
             <input id="title" className="input" required value={form.title} onChange={set('title')} />{err('title')}</div>
           <div><label htmlFor="domain" className="label">Domain *</label>
             <select id="domain" className="input" required value={form.domain_id} onChange={set('domain_id')}>
               <option value="">Select domain…</option>{domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>{err('domain')}</div>
+          <div><label htmlFor="subdomain" className="label">Subdomain{needsSub ? ' *' : ''}</label>
+            <select id="subdomain" className="input" required={needsSub} disabled={!domain} value={form.subdomain_id} onChange={set('subdomain_id')}>
+              <option value="">{!domain ? 'Choose a domain first' : needsSub ? 'Select subdomain…' : 'None (no subdomains yet)'}</option>
+              {subdomains.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>{err('subdomain_id')}
+            {domain && (
+              <div className="mt-2 flex gap-2">
+                <input className="input" placeholder="Add a new subdomain…" aria-label="New subdomain" value={newSub} onChange={(e) => setNewSub(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addSubdomain() } }} />
+                <button type="button" className="btn-secondary shrink-0" disabled={subBusy || newSub.trim().length < 2} onClick={addSubdomain}><Plus className="h-4 w-4" />Add</button>
+              </div>
+            )}</div>
           <div><label htmlFor="source_type" className="label">Statement type *</label>
             <select id="source_type" className="input" value={form.source_type} onChange={set('source_type')}>
               <option value="internal">Internal statement</option><option value="industry">Industry statement</option>
@@ -111,7 +138,7 @@ export default function ProblemStatementForm() {
         </div>
         {RICH.map(([k, label]) => <RichTextEditor key={k} id={`rt-${k}`} label={label} value={form[k]} onChange={setRich(k)} error={errs[k]} />)}
         <div className="flex justify-end gap-2">
-          <Link to={`${base}/problem-statements`} className="btn-secondary">Back to list</Link>
+          <Link to={`${base}/project-shelf`} className="btn-secondary">Back to Project Shelf</Link>
           <button className="btn-primary" disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Create & add files'}</button>
         </div>
       </form>

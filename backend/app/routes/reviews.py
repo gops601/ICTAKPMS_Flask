@@ -36,6 +36,7 @@ class CriterionSchema(_Base):
 class StudentRemarkSchema(_Base):
     student_id = fields.Integer(required=True)
     remarks = fields.String(allow_none=True)
+    marks_obtained = fields.Raw(allow_none=True)  # individual score (never shown to students)
 
 
 class ReviewPayloadSchema(_Base):
@@ -46,6 +47,7 @@ class ReviewPayloadSchema(_Base):
     recommendations = fields.String(allow_none=True)
     review_date = fields.String(allow_none=True)
     student_remarks = fields.List(fields.Nested(StudentRemarkSchema))
+    individual_max_marks = fields.Raw(allow_none=True)
     version = fields.Integer()
 
 
@@ -105,7 +107,7 @@ def project_reviews(project_id):
     return ok({
         "project": {"id": project.id, "title": project.title, "stage": project.stage, "stage_label": lifecycle.LABELS[project.stage]},
         "reviews": [_view(r) for r in reviews],
-        "overall": ev.overall_performance(project.id),
+        "overall": ev.overall_performance(project.id, include_scores=user.role_name != "student"),
         "final_evaluation": {
             "signed_off": bool(project.final_signed_off_by), "remarks": project.final_remarks if project.final_signed_off_by else None,
             "signed_by": signer.name if signer else None,

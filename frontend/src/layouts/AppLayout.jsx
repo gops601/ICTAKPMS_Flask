@@ -16,7 +16,7 @@ function NavItem({ item, onClick }) {
       onClick={onClick}
       className={({ isActive }) =>
         `flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition ${
-          isActive ? 'bg-white/15 text-white shadow-inner ring-1 ring-white/10' : 'text-emerald-100/80 hover:bg-white/10 hover:text-white'
+          isActive ? 'bg-white/15 text-white shadow-inner ring-1 ring-white/10' : 'text-rose-100/80 hover:bg-white/10 hover:text-white'
         }`
       }
     >

@@ -24,7 +24,8 @@ export function computeTotals(rows) {
 export default function ReviewEditor({ review, onChange }) {
   const [rows, setRows] = useState(() => review.criteria.map(newRow))
   const [fb, setFb] = useState({ remarks: review.remarks || '', strengths: review.strengths || '', improvements: review.improvements || '', recommendations: review.recommendations || '', review_date: review.review_date || '' })
-  const [students, setStudents] = useState(() => (review.student_remarks || []).map((s) => ({ ...s })))
+  const [students, setStudents] = useState(() => (review.student_remarks || []).map((s) => ({ ...s, marks_obtained: s.marks_obtained ?? '' })))
+  const [indMax, setIndMax] = useState(review.individual_max_marks ?? 10)
   const [templates, setTemplates] = useState([])
   const [tplId, setTplId] = useState('')
   const [error, setError] = useState('')
@@ -44,7 +45,8 @@ export default function ReviewEditor({ review, onChange }) {
   const payload = () => ({
     criteria: rows.map((r) => ({ id: r.id, name: r.name, max_marks: r.max_marks, marks_obtained: r.marks_obtained === '' ? null : r.marks_obtained, remarks: r.remarks })),
     ...fb, review_date: fb.review_date || null, version: review.version,
-    student_remarks: students.map((s) => ({ student_id: s.student_id, remarks: s.remarks })),
+    individual_max_marks: indMax,
+    student_remarks: students.map((s) => ({ student_id: s.student_id, remarks: s.remarks, marks_obtained: s.marks_obtained === '' ? null : s.marks_obtained })),
   })
 
   const localCheck = () => {
@@ -181,14 +183,25 @@ export default function ReviewEditor({ review, onChange }) {
       {students.length > 0 && (
         <div className="card space-y-3" aria-label="Remarks for each student">
           <div>
-            <h2 className="font-semibold text-slate-900">Remarks for each student</h2>
-            <p className="text-xs text-slate-500">Add a remark for every student you are scoring. Each student sees only their own remark.</p>
+            <h2 className="font-semibold text-slate-900">Individual evaluation</h2>
+            <p className="text-xs text-slate-500">
+              {students.length > 1 ? 'Required for every team member: individual marks and a remark. ' : 'Optional for a solo project. '}
+              Students only see their own remark, never any marks.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <label htmlFor="ind-max" className="text-slate-600">Individual marks are out of</label>
+            <input id="ind-max" type="number" min="1" className="input !w-24" value={indMax} onChange={(ev) => setIndMax(ev.target.value)} />
           </div>
           {students.map((s) => (
             <div key={s.student_id}>
               <label htmlFor={`sr-${s.student_id}`} className="label">{s.name} <span className="font-normal text-slate-500">· {s.registration_no}</span></label>
-              <textarea id={`sr-${s.student_id}`} aria-label={`Remarks for ${s.name}`} className="input" rows={2} value={s.remarks}
-                onChange={(ev) => setStudents((list) => list.map((x) => (x.student_id === s.student_id ? { ...x, remarks: ev.target.value } : x)))} />
+              <div className="flex gap-2">
+                <input type="number" min="0" step="0.5" aria-label={`Individual marks for ${s.name}`} placeholder="Marks" className="input !w-24 shrink-0" value={s.marks_obtained}
+                  onChange={(ev) => setStudents((list) => list.map((x) => (x.student_id === s.student_id ? { ...x, marks_obtained: ev.target.value } : x)))} />
+                <textarea id={`sr-${s.student_id}`} aria-label={`Remarks for ${s.name}`} className="input" rows={2} value={s.remarks}
+                  onChange={(ev) => setStudents((list) => list.map((x) => (x.student_id === s.student_id ? { ...x, remarks: ev.target.value } : x)))} />
+              </div>
               {errs[`student_remarks.${students.indexOf(s)}`] && <p className="mt-0.5 text-xs text-red-600">{errs[`student_remarks.${students.indexOf(s)}`]}</p>}
             </div>
           ))}

@@ -75,7 +75,7 @@ export default function NotificationBell() {
             {items.length === 0 && <li className="px-4 py-6 text-center text-sm text-slate-500">You're all caught up.</li>}
             {items.map((n) => (
               <li key={n.id}>
-                <button role="menuitem" onClick={() => openItem(n)} className={`w-full px-4 py-2.5 text-left hover:bg-slate-50 ${n.is_read ? '' : 'bg-blue-50/60'}`}>
+                <button role="menuitem" onClick={() => openItem(n)} className={`w-full px-4 py-2.5 text-left hover:bg-slate-50 ${n.is_read ? '' : 'bg-rose-50/60'}`}>
                   <div className="text-sm font-medium text-slate-900">{n.title}</div>
                   {n.message && <div className="line-clamp-2 text-xs text-slate-600">{n.message}</div>}
                   <div className="mt-0.5 text-[11px] text-slate-400">{timeAgo(n.created_at)}</div>

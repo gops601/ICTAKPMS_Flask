@@ -47,12 +47,21 @@ class DomainUpdateSchema(_Base):
     description = fields.String(allow_none=True)
 
 
+class SubdomainSchema(_Base):
+    name = fields.String(required=True, validate=validate.Length(min=2, max=120))
+
+
+class SubdomainUpdateSchema(_Base):
+    name = fields.String(validate=validate.Length(min=2, max=120))
+    is_active = fields.Boolean()
+
+
 class DomainLeadsSchema(_Base):
     user_ids = fields.List(fields.Integer(), required=True)
 
 
 class BatchSchema(_Base):
-    code = fields.String(required=True, validate=validate.Length(min=1, max=50))
+    code = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=50))  # blank = generated ICT_BATCH_ id
     name = fields.String(required=True, validate=validate.Length(min=1, max=150))
     ou_id = fields.Integer(required=True)
     domain_id = fields.Integer(required=True)
@@ -88,7 +97,7 @@ class StudentCreateSchema(_Base):
     name = fields.String(required=True, validate=validate.Length(min=2, max=150))
     email = fields.Email(required=True)
     phone = fields.String(load_default=None, validate=validate.Length(max=30))
-    registration_no = fields.String(required=True, validate=validate.Length(min=1, max=60))
+    registration_no = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=60))  # blank = generated ICT_STU_ id
     batch_id = fields.Integer(required=True)
     extra_fields = fields.Dict(load_default=dict)
 
@@ -115,6 +124,11 @@ class StaffCreateSchema(_Base):
     bio = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=5000))
 
 
+class StaffCredentialsSchema(_Base):
+    role = fields.String(required=True, validate=validate.OneOf(["mentor", "domain_lead"]))
+    user_ids = fields.List(fields.Integer(), load_default=None)
+
+
 class ResetPasswordAdminSchema(_Base):
     new_password = fields.String(load_default=None, validate=validate.Length(max=128))
 
@@ -136,9 +150,14 @@ def ou_to_dict(ou, with_fields=False):
     return d
 
 
+def subdomain_to_dict(s):
+    return {"id": s.id, "domain_id": s.domain_id, "name": s.name, "is_active": s.is_active}
+
+
 def domain_to_dict(d, counts=None):
     out = {"id": d.id, "name": d.name, "code": d.code, "description": d.description, "is_active": d.is_active,
-           "leads": [{"id": l.user.id, "name": l.user.name, "email": l.user.email} for l in d.leads]}
+           "leads": [{"id": l.user.id, "name": l.user.name, "email": l.user.email} for l in d.leads],
+           "subdomains": [subdomain_to_dict(s) for s in d.subdomains]}
     if counts:
         out.update(counts)
     return out

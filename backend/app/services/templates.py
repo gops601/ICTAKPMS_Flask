@@ -30,6 +30,8 @@ def build_template(import_type, ou, fmt):
             note = "easy, medium or hard (default medium)"
         elif c["key"] == "status":
             note = "active or inactive (default active)"
+        elif c["key"] == "subdomain":
+            note = "Name of a subdomain of the row's domain. Required when that domain has subdomains"
         elif c["key"] == "source_type":
             note = "internal or industry (default internal)"
         elif c["key"] == "industry":

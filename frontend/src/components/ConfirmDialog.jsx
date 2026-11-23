@@ -14,7 +14,7 @@ export default function ConfirmDialog({ title = 'Please confirm', message, confi
         </>
       }
     >
-      <p className="text-sm text-slate-600">{message}</p>
+      <div className="text-sm text-slate-600">{message}</div>
     </Modal>
   )
 }

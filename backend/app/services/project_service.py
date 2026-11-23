@@ -11,6 +11,7 @@ from app.services.metrics_service import DEFAULT_WEIGHTS, PROJECT_WEEKS, progres
 from app.services.fields import parse_date
 from app.services.notification_service import domain_lead_user_ids, notify
 from app.utils.errors import AppError, NotFound
+from app.utils.ids import generate_id
 
 MAX_STUDENTS_PER_REQUEST = 200
 
@@ -109,7 +110,8 @@ def allocate(batch, items, actor, mentor_id=None, start_date=None):
 
 
 def _create_project(batch, ps, members, actor, mentor, start, end=None):
-    project = Project(batch_id=batch.id, problem_statement_id=ps.id, mentor_id=mentor.id if mentor else None,
+    project = Project(code=generate_id("PRJ", lambda c: db.session.query(Project.id).filter_by(code=c).first() is not None),
+                      batch_id=batch.id, problem_statement_id=ps.id, mentor_id=mentor.id if mentor else None,
                       title=ps.title, stage="allocated", start_date=start,
                       target_end_date=end or start + timedelta(weeks=PROJECT_WEEKS))
     db.session.add(project)

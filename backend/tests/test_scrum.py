@@ -89,8 +89,8 @@ def test_permission_flags_per_role(client, world):
     flags = lambda who: board(client, world, who, world["team"])["permissions"]  # noqa: E731
     s = flags("s1")
     assert s["can_create"] and s["can_edit"] and s["can_move"] and s["can_delete"] and s["can_comment"] and s["reason"] is None
-    m = flags("m1")
-    assert not m["can_create"] and not m["can_edit"] and not m["can_move"] and m["can_comment"] and "comment" in m["reason"]
+    m = flags("m1")  # mentors change the board too
+    assert m["can_create"] and m["can_edit"] and m["can_move"] and m["can_delete"] and m["can_comment"]
     la = flags("la")
     assert not any(la[k] for k in ("can_create", "can_edit", "can_move", "can_comment")) and "read-only" in la["reason"]
     assert flags("admin")["can_comment"] and not flags("admin")["can_edit"]
@@ -148,8 +148,8 @@ def test_assignee_must_be_project_member(client, world):
     assert r.status_code == 422 and "assigned_student_id" in r.get_json()["errors"]
 
 
-@pytest.mark.parametrize("who,code", [("s3", 404), ("s4", 404), ("m1", 403), ("la", 403), ("admin", 403)])
-def test_only_project_students_create_tasks(client, world, who, code):
+@pytest.mark.parametrize("who,code", [("s3", 404), ("s4", 404), ("m1", 201), ("m2", 404), ("la", 403), ("admin", 403)])
+def test_only_project_students_and_mentors_create_tasks(client, world, who, code):
     assert add(client, world, who, world["team"]).status_code == code
 
 
@@ -185,7 +185,7 @@ def test_unchanged_edit_adds_no_history(client, world):
 def test_edit_permissions_and_unassign(client, world):
     sid = world["studs"]["s1"].id
     t = add(client, world, "s1", world["team"], assigned_student_id=sid).get_json()["data"]
-    for who, code in (("m1", 403), ("la", 403), ("s3", 404)):
+    for who, code in (("la", 403), ("admin", 403), ("m2", 404), ("s3", 404)):
         assert client.put(f"/api/scrum/tasks/{t['id']}", headers=world["H"][who], json={"title": "hack"}).status_code == code
     r = client.put(f"/api/scrum/tasks/{t['id']}", headers=world["H"]["s2"], json={"assigned_student_id": None})
     assert r.get_json()["data"]["assignee"] is None
@@ -228,17 +228,15 @@ def test_invalid_move_target(client, world):
     assert move(client, world, "s1", t["id"], "nowhere").status_code == 422
 
 
-def test_mentor_move_requires_lead_enabled_permission(client, world):
+def test_mentor_can_change_the_board_but_leads_and_admins_cannot(client, world):
     t = add(client, world, "s1", world["team"]).get_json()["data"]
-    assert move(client, world, "m1", t["id"], "todo").status_code == 403                  # default: view + comment only
-    client.patch(f"/api/projects/{world['team'].id}/settings", headers=world["H"]["la"], json={"mentor_can_edit_board": True})
     assert move(client, world, "m1", t["id"], "todo").status_code == 200
-    # even then the mentor still cannot create, edit or delete
-    assert add(client, world, "m1", world["team"]).status_code == 403
-    assert client.put(f"/api/scrum/tasks/{t['id']}", headers=world["H"]["m1"], json={"title": "x"}).status_code == 403
-    assert client.delete(f"/api/scrum/tasks/{t['id']}", headers=world["H"]["m1"]).status_code == 403
+    assert client.put(f"/api/scrum/tasks/{t['id']}", headers=world["H"]["m1"], json={"title": "x"}).status_code == 200
+    assert client.delete(f"/api/scrum/tasks/{t['id']}", headers=world["H"]["m1"]).status_code == 200
     assert move(client, world, "m2", t["id"], "todo").status_code == 404                  # unassigned mentor
-    assert move(client, world, "la", t["id"], "todo").status_code == 403
+    t2 = add(client, world, "s1", world["team"]).get_json()["data"]
+    assert move(client, world, "la", t2["id"], "todo").status_code == 403
+    assert move(client, world, "admin", t2["id"], "todo").status_code == 403
 
 
 def test_move_to_in_review_notifies_mentors(client, world):

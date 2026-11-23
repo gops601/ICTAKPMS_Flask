@@ -3,9 +3,11 @@ import secrets
 import string
 
 from app.extensions import db
-from app.models import Batch, Mentor, Student, User
+from app.models import (Batch, BatchMentor, DomainLead, Mentor, Notification, PasswordResetToken, Project, ProjectStudent,
+                        Student, StudentProposal, User)
 from app.services.auth_service import create_user, validate_password_strength
 from app.utils.errors import AppError, NotFound
+from app.utils.ids import generate_id
 
 
 def generate_temp_password():
@@ -57,8 +59,9 @@ def create_staff_user(role, name, email, password, phone=None, domain_id=None, d
 def create_student(batch, name, email, phone, registration_no, extra_fields=None, password=None):
     """Create user + student profile. Returns (student, temp_password)."""
     registration_no = (registration_no or "").strip()
-    if not registration_no:
-        raise AppError("Registration number is required", 422)
+    if not registration_no:  # left blank: the system issues an ICT_STU_XXXXXX id
+        registration_no = generate_id("STU", lambda c: db.session.query(Student.id).filter(
+            db.func.lower(Student.registration_no) == c.lower()).first() is not None)
     if db.session.query(Student).filter_by(batch_id=batch.id).filter(
             db.func.lower(Student.registration_no) == registration_no.lower()).first():
         raise AppError(f"Registration number '{registration_no}' already exists in this batch", 409)
@@ -121,3 +124,95 @@ def ensure_batch(batch_id):
     if not b:
         raise AppError("Batch not found", 422, {"batch_id": "Batch not found"})
     return b
+
+
+# ------------------------------------------------------------- staff credentials
+STAFF_ROLES = ("mentor", "domain_lead")
+
+
+def staff_credential_row(user, temporary_password):
+    """One shareable login record for a mentor or domain lead (never persisted)."""
+    row = {"name": user.name, "email": user.email, "phone": user.phone or "", "role": user.role_name,
+           "temporary_password": temporary_password, "designation": "", "company": "", "details": ""}
+    mentor = db.session.query(Mentor).filter_by(user_id=user.id).first()
+    if mentor:
+        row["designation"] = mentor.designation or ""
+        row["company"] = mentor.company or ""
+        row["details"] = "Industry mentor" if mentor.mentor_type == "industry" else "Internal mentor (ICT trainer)"
+    elif user.role_name == "domain_lead":
+        names = [d.domain.name for d in db.session.query(DomainLead).filter_by(user_id=user.id).all()]
+        row["details"] = ", ".join(names)
+    return row
+
+
+def issue_staff_credentials(role, user_ids=None):
+    """Fresh temporary passwords for mentors / domain leads who have not logged in yet.
+
+    Like the student version, anyone who already chose their own password (or is deactivated) is skipped so an
+    active account is never locked out by a bulk download; use "Reset password" for those. Returns (issued, skipped).
+    """
+    if role not in STAFF_ROLES:
+        raise AppError("Credentials can be issued for mentors and domain leads here", 422)
+    from app.models import Role
+    q = db.session.query(User).join(Role, Role.id == User.role_id).filter(Role.name == role)
+    if user_ids:
+        q = q.filter(User.id.in_(user_ids))
+    issued, skipped = [], []
+    for u in q.order_by(User.name).all():
+        if not u.is_active:
+            skipped.append({"name": u.name, "email": u.email, "reason": "Account is deactivated"})
+        elif not u.must_change_password:
+            skipped.append({"name": u.name, "email": u.email, "reason": "Already set their own password"})
+        else:
+            issued.append(staff_credential_row(u, reset_user_password(u)))
+    return issued, skipped
+
+
+# ------------------------------------------------------------------- deletion
+def delete_user(user, actor):
+    """Permanently delete an account and its profile. Refuses when that would orphan real work.
+
+    Returns a small description for the audit log. Raises AppError(409) with the reason otherwise.
+    """
+    if user.id == actor.id:
+        raise AppError("You cannot delete your own account", 409)
+    role = user.role_name
+    if role == "admin":
+        others = db.session.query(User).filter(User.id != user.id, User.is_active.is_(True)).join(User.role).filter_by(name="admin").count()
+        if others == 0:
+            raise AppError("This is the last active administrator and cannot be deleted", 409)
+    elif role == "student":
+        s = db.session.query(Student).filter_by(user_id=user.id).first()
+        if s and db.session.query(ProjectStudent).filter_by(student_id=s.id).first():
+            raise AppError("This student has a project. Deactivate the account instead (deleting would damage the project's records).", 409)
+        if s:
+            from app.services import file_service
+            for p in db.session.query(StudentProposal).filter_by(student_id=s.id).all():
+                f = p.file
+                db.session.delete(p)
+                db.session.flush()
+                file_service.delete_file(f)
+            db.session.delete(s)
+    elif role == "mentor":
+        m = db.session.query(Mentor).filter_by(user_id=user.id).first()
+        if m:
+            batches = db.session.query(BatchMentor).filter_by(mentor_id=m.id, is_active=True).count()
+            overrides = db.session.query(Project).filter_by(mentor_id=m.id).count()
+            if batches or overrides:
+                raise AppError(f"This mentor is assigned to {batches} batch(es) and {overrides} project(s). "
+                               "Reassign or remove them first, or deactivate the account.", 409)
+            db.session.query(BatchMentor).filter_by(mentor_id=m.id).delete()
+            db.session.delete(m)
+    elif role == "domain_lead":
+        for link in db.session.query(DomainLead).filter_by(user_id=user.id).all():
+            others = db.session.query(DomainLead).filter(DomainLead.domain_id == link.domain_id, DomainLead.user_id != user.id).count()
+            if others == 0 and db.session.query(Batch).filter_by(domain_id=link.domain_id).count():
+                raise AppError(f"This is the only lead of the domain '{link.domain.name}', which has batches. "
+                               "Assign another lead first, or deactivate the account.", 409)
+        db.session.query(DomainLead).filter_by(user_id=user.id).delete()
+    db.session.query(Notification).filter_by(user_id=user.id).delete()
+    db.session.query(PasswordResetToken).filter_by(user_id=user.id).delete()
+    info = {"email": user.email, "role": role, "name": user.name}
+    db.session.delete(user)
+    db.session.flush()
+    return info

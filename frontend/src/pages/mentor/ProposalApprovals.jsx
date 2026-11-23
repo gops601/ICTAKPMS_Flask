@@ -36,7 +36,7 @@ export default function ProposalApprovals() {
 
   return (
     <div>
-      <PageHeader title="Problem Statement Approvals" subtitle="Detailed problem statements proposed by students in your batches." />
+      <PageHeader title="Project Proposal Approvals" subtitle="Detailed project proposals uploaded by students in your batches." />
       <div className="card">
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <input className="input" placeholder="Search title or student…" aria-label="Search proposals" value={q} onChange={(e) => { setQ(e.target.value); setPage(1) }} />
@@ -46,7 +46,7 @@ export default function ProposalApprovals() {
         </div>
         <Alert>{error || (!decision && actionError)}</Alert>
         <DataTable loading={loading} rows={items} empty="Nothing to review." columns={[
-          { key: 'title', header: 'Problem statement', render: (p) => <div><div className="font-medium">{p.title}</div>{p.summary && <div className="line-clamp-2 text-xs text-slate-500">{p.summary}</div>}</div> },
+          { key: 'title', header: 'Proposal', render: (p) => <div><div className="font-medium">{p.title}</div>{p.summary && <div className="line-clamp-2 text-xs text-slate-500">{p.summary}</div>}</div> },
           { key: 'student', header: 'Student', render: (p) => <div>{p.student.name}<div className="text-xs text-slate-500">{p.student.registration_no} · {p.student.batch.code}</div></div> },
           { key: 'status', header: 'Status', render: (p) => <StatusBadge tone={TONE[p.status]}>{p.status}</StatusBadge> },
           { key: 'actions', header: 'Actions', render: (p) => (

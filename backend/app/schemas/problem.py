@@ -11,9 +11,10 @@ def _text():
 
 
 class ProblemStatementSchema(_Base):
-    ps_code = fields.String(required=True, validate=validate.Length(min=1, max=50))
+    ps_code = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=50))  # blank = generated ICT_PS_ id
     title = fields.String(required=True, validate=validate.Length(min=1, max=255))
     domain_id = fields.Integer(required=True)
+    subdomain_id = fields.Integer(allow_none=True)
     description = _text()
     problem_definition = _text()
     objectives = _text()
@@ -50,7 +51,8 @@ def file_to_dict(link):
 def ps_to_dict(ps, detail=False, can_edit=False):
     out = {"id": ps.id, "ps_code": ps.ps_code, "title": ps.title, "difficulty": ps.difficulty, "status": ps.status,
            "source_type": ps.source_type, "industry": ps.industry,
-           "domain": {"id": ps.domain.id, "name": ps.domain.name}, "estimated_duration": ps.estimated_duration,
+           "domain": {"id": ps.domain.id, "name": ps.domain.name},
+           "subdomain": {"id": ps.subdomain.id, "name": ps.subdomain.name} if ps.subdomain else None, "estimated_duration": ps.estimated_duration,
            "created_at": ps.created_at.isoformat(), "dataset_count": len(ps.datasets),
            "document_count": len(ps.documents)}
     if detail:

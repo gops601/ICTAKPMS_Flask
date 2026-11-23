@@ -325,14 +325,11 @@ def student_dashboard(user, filters=None):
     m = project_metrics([p])[p.id]
     mentors = mentors_by_project([p])[p.id]
     reviews = db.session.query(ProjectReview).filter_by(project_id=p.id).order_by(ProjectReview.week_no).all()
-    scores = review_score_map([p.id])
     week_rows, latest = [], None
     for r in reviews:
         row = {"week_no": r.week_no, "label": f"Week {r.week_no}", "due_date": r.due_date.isoformat() if r.due_date else None,
                "status": "submitted" if r.status == "submitted" else "pending"}
-        if r.status == "submitted":
-            got, mx = scores.get(r.id, (0.0, 0.0))
-            row.update(obtained=got, max=mx, percentage=round(got * 100 / mx, 1) if mx else 0.0)
+        if r.status == "submitted":  # students are shown remarks only, never marks or percentages
             if latest is None or r.week_no > latest["week_no"]:
                 latest = {"week_no": r.week_no, "remarks": r.remarks, "mentor": None}
         week_rows.append(row)
@@ -361,7 +358,7 @@ def student_dashboard(user, filters=None):
         "batch": {"code": p.batch.code, "name": p.batch.name}, "mentors": [x.user.name for x in mentors],
         "srs_status": srs_status_of(p.stage), "srs_status_label": SRS_LABELS[srs_status_of(p.stage)], "latest_srs_feedback": srs_remark,
         "reviews": week_rows, "latest_mentor_feedback": latest, "scrum": m["tasks"], "github_url": repo,
-        "overall_score_pct": m["score_pct"], "timeline": transitions,
+        "timeline": transitions,
     }
 
 

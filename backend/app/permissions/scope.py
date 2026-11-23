@@ -32,6 +32,14 @@ def mentor_batch_ids(user):
     return {r[0] for r in rows}
 
 
+def mentor_domain_ids(user):
+    """Domains of the batches a mentor is assigned to."""
+    ids = mentor_batch_ids(user)
+    if not ids:
+        return set()
+    return {r[0] for r in db.session.query(Batch.domain_id).filter(Batch.id.in_(ids), Batch.domain_id.isnot(None)).all()}
+
+
 def can_access_domain(user, domain_id):
     if user.role_name == ROLE_ADMIN:
         return True
@@ -117,6 +125,8 @@ def ensure_project_access(user, project_id):
 def can_view_problem_statement(user, ps):
     """Admin / lead of the statement's domain, or anyone with a project that uses it."""
     if can_access_domain(user, ps.domain_id):
+        return True
+    if user.role_name == ROLE_MENTOR and ps.domain_id in mentor_domain_ids(user):
         return True
     q = scoped_projects(user).where(Project.problem_statement_id == ps.id).limit(1)
     return db.session.scalar(q) is not None

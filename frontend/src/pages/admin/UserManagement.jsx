@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { KeyRound, Plus } from 'lucide-react'
+import { Download, KeyRound, Plus, Trash2 } from 'lucide-react'
 import { domainService, userService } from '../../services/adminService'
 import { errorMessage, fieldErrors } from '../../services/api'
 import { useDebounced, useList } from '../../hooks/useList'
 import { ROLE_LABEL } from '../../utils/roles'
+import { downloadStaffCredentials } from '../../utils/credentials'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import Pagination from '../../components/Pagination'
@@ -100,6 +101,56 @@ function CreateUserModal({ domains, onClose, onDone, fixedRole }) {
   )
 }
 
+/** Issues fresh temporary passwords for mentors / domain leads who have not logged in yet and offers them as one CSV. */
+function StaffCredentialsModal({ role, onClose }) {
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const label = ROLE_LABEL[role]
+  const issue = async () => {
+    setBusy(true); setError('')
+    try { setResult(await userService.credentials(role)) } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
+  }
+  return (
+    <Modal title={`Download ${label.toLowerCase()} credentials`} onClose={onClose} wide>
+      {!result ? (
+        <div className="space-y-4">
+          <Alert>{error}</Alert>
+          <p className="text-sm text-slate-600">
+            Creates a <b>new temporary password</b> for every {label.toLowerCase()} who has not logged in yet and gives you a file with their login details to share.
+            Anyone who already chose their own password is not touched (use <i>Reset password</i> for them). Passwords are shown once and are not stored in readable form.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button className="btn-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn-primary" disabled={busy} onClick={issue}><KeyRound className="h-4 w-4" />{busy ? 'Generating…' : 'Generate passwords'}</button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <Alert type={result.credentials.length ? 'success' : 'warning'}>
+            {result.credentials.length ? `${result.credentials.length} ${label.toLowerCase()}(s) ready.` : 'No new passwords were issued.'}
+            {result.skipped.length > 0 && ` ${result.skipped.length} skipped.`}
+          </Alert>
+          {result.credentials.length > 0 && (
+            <>
+              <Alert type="warning">Download now – these passwords cannot be shown again. They must change them at first login.</Alert>
+              <button className="btn-primary" onClick={() => downloadStaffCredentials(result.credentials, `${role}_credentials.csv`)}>
+                <Download className="h-4 w-4" />Download details with passwords (CSV)
+              </button>
+            </>
+          )}
+          {result.skipped.length > 0 && (
+            <ul className="list-disc pl-5 text-sm text-slate-600" aria-label="Skipped users">
+              {result.skipped.map((s) => <li key={s.email}>{s.name} ({s.email}) – {s.reason}</li>)}
+            </ul>
+          )}
+          <div className="flex justify-end"><button className="btn-secondary" onClick={onClose}>Close</button></div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
 export default function UserManagement({ fixedRole, title = 'Users', subtitle = 'Administrators, domain leads, mentors and students.', addLabel = 'Create user' }) {
   const [q, setQ] = useState('')
   const [role, setRole] = useState('')
@@ -110,6 +161,8 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
   const [resetFor, setResetFor] = useState(null)
   const [toggle, setToggle] = useState(null)
   const [tempPw, setTempPw] = useState(null)
+  const [credentials, setCredentials] = useState(false)
+  const [deleting, setDeleting] = useState(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
   const dq = useDebounced(q)
@@ -133,10 +186,20 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
     catch (e) { setActionError(errorMessage(e)); setToggle(null) } finally { setBusy(false) }
   }
 
+  const doDelete = async () => {
+    setBusy(true); setActionError('')
+    try { await userService.remove(deleting.id); setDeleting(null); reload() }
+    catch (e) { setActionError(errorMessage(e)); setDeleting(null) } finally { setBusy(false) }
+  }
+  const credRole = fixedRole === 'mentor' || fixedRole === 'domain_lead' ? fixedRole : (role === 'mentor' || role === 'domain_lead' ? role : null)
+
   return (
     <div>
       <PageHeader title={title} subtitle={subtitle}
-        actions={<button className="btn-primary" onClick={() => setCreating(true)}><Plus className="h-4 w-4" />{addLabel}</button>} />
+        actions={<>
+          {credRole && <button className="btn-secondary" onClick={() => setCredentials(true)}><KeyRound className="h-4 w-4" />Download credentials</button>}
+          <button className="btn-primary" onClick={() => setCreating(true)}><Plus className="h-4 w-4" />{addLabel}</button>
+        </>} />
       <div className="card">
         <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           {isMentors && (
@@ -167,6 +230,7 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
             <div className="flex gap-2">
               <button className="btn-secondary" onClick={() => setResetFor(u)}><KeyRound className="h-4 w-4" />Reset password</button>
               <button className="btn-secondary" onClick={() => setToggle(u)}>{u.is_active ? 'Deactivate' : 'Activate'}</button>
+              <button className="btn-secondary" onClick={() => { setActionError(''); setDeleting(u) }} aria-label={`Delete ${u.name}`}><Trash2 className="h-4 w-4" />Delete</button>
             </div>
           ) },
         ]} />
@@ -175,6 +239,9 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
       {creating && <CreateUserModal fixedRole={fixedRole} domains={domains} onClose={() => setCreating(false)} onDone={() => { setCreating(false); reload() }} />}
       {resetFor && <ConfirmDialog message={`Reset the password for ${resetFor.name}? A new temporary password will be generated.`} confirmLabel="Reset password" busy={busy} onConfirm={doReset} onCancel={() => setResetFor(null)} />}
       {toggle && <ConfirmDialog message={`${toggle.is_active ? 'Deactivate' : 'Activate'} ${toggle.name}?`} confirmLabel={toggle.is_active ? 'Deactivate' : 'Activate'} danger={toggle.is_active} busy={busy} onConfirm={doToggle} onCancel={() => setToggle(null)} />}
+      {credentials && credRole && <StaffCredentialsModal role={credRole} onClose={() => setCredentials(false)} />}
+      {deleting && <ConfirmDialog danger confirmLabel="Delete permanently" busy={busy} onConfirm={doDelete} onCancel={() => setDeleting(null)}
+        message={`Permanently delete ${deleting.name} (${deleting.email})? This cannot be undone. If they have work attached you will be asked to deactivate instead.`} />}
       {tempPw && (
         <Modal title="Password reset" onClose={() => setTempPw(null)}>
           <Alert type="warning">Temporary password for {tempPw.user.email} (shown once): <b className="font-mono">{tempPw.password}</b></Alert>

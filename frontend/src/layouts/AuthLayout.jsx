@@ -11,25 +11,25 @@ export default function AuthLayout({ title, subtitle, children }) {
     <div className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
       <aside className="hero-gradient relative hidden flex-col justify-between overflow-hidden p-12 text-white lg:flex">
         {/* soft decorative glows */}
-        <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-emerald-400/10 blur-3xl" aria-hidden />
+        <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-rose-400/10 blur-3xl" aria-hidden />
         <div className="pointer-events-none absolute -bottom-32 right-0 h-80 w-80 rounded-full bg-amber-400/10 blur-3xl" aria-hidden />
         <div className="relative flex items-center gap-3">
           <LogoMark size={44} />
-          <div><div className="text-2xl font-bold tracking-tight">{APP_NAME}</div><div className="text-sm text-emerald-200">{APP_TAGLINE}</div></div>
+          <div><div className="text-2xl font-bold tracking-tight">{APP_NAME}</div><div className="text-sm text-rose-200">{APP_TAGLINE}</div></div>
         </div>
         <div className="relative">
           <p className="mb-3 inline-block rounded-full bg-white/10 px-3 py-1 text-xs font-medium uppercase tracking-widest text-amber-300 ring-1 ring-white/15">AI-era project learning</p>
-          <h2 className="max-w-md text-3xl font-semibold leading-tight">From problem statement to final evaluation, in one place.</h2>
+          <h2 className="max-w-md text-3xl font-semibold leading-tight">From the project shelf to final evaluation, in one place.</h2>
           {heroImage
             ? <img src={heroImage} alt="" className="mt-6 max-h-[340px] w-full rounded-2xl object-cover shadow-2xl" />
             : <AiNetworkHero className="mt-4 w-full max-w-xl" />}
         </div>
-        <ul className="relative space-y-2 text-sm text-emerald-50/90">
+        <ul className="relative space-y-2 text-sm text-rose-50/90">
           {FEATURES.map((f) => <li key={f} className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-amber-300" aria-hidden />{f}</li>)}
         </ul>
       </aside>
       <main className="relative flex items-center justify-center bg-canvas px-4 py-10">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand via-emerald-400 to-accent" aria-hidden />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand via-rose-400 to-accent" aria-hidden />
         <div className="w-full max-w-md">
           <div className="mb-6 flex items-center justify-center gap-3 lg:hidden">
             <LogoMark size={40} /><span className="text-xl font-bold text-navy-800">{APP_NAME}</span>
