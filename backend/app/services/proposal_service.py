@@ -7,7 +7,7 @@ is what unlocks SRS submission. Rejection marks the entry rejected and inactive.
 from html import escape
 
 from app.extensions import db
-from app.models import (BatchMentor, Mentor, ProblemStatement, ProblemStatementDataset, ProblemStatementDocument,
+from app.models import (Student, User, BatchMentor, Mentor, ProblemStatement, ProblemStatementDataset, ProblemStatementDocument,
                         ProjectStudent, ProposalDataset, StudentProposal, Subdomain)
 from app.models.base import utcnow
 from app.services import data_collection, file_service, problem_service
@@ -16,16 +16,93 @@ from app.utils.errors import AppError
 
 DECISIONS = {"approve": "approved", "reject": "rejected"}
 MAX_DATASETS = 10
+MAX_GROUP_SIZE = 6
+MAX_ROLE_LEN = 60
+LEAD_ROLE = "Team Lead"
 
 
 def has_project(student):
     return db.session.query(ProjectStudent.id).filter_by(student_id=student.id).first() is not None
 
 
+def pending_group_of(student):
+    """The pending group proposal (by someone else) that lists this student as a member, if any."""
+    rows = (db.session.query(StudentProposal).join(Student, Student.id == StudentProposal.student_id)
+            .filter(StudentProposal.is_group.is_(True), StudentProposal.status == "pending",
+                    Student.batch_id == student.batch_id, StudentProposal.student_id != student.id).all())
+    return next((p for p in rows if any(m.get("student_id") == student.id for m in (p.group_members or []))), None)
+
+
+def member_block_reason(student):
+    """Why this student cannot be put into a group right now (None = free)."""
+    name = student.user.name
+    if has_project(student):
+        return f"{name} already has a project"
+    if db.session.query(StudentProposal.id).filter(StudentProposal.student_id == student.id,
+                                                   StudentProposal.status == "pending").first():
+        return f"{name} has already proposed a project of their own"
+    if pending_group_of(student):
+        return f"{name} is already in another group proposal"
+    return None
+
+
+def members_view(p):
+    """The group (submitter first) with each student's role; empty for an individual project."""
+    if not (p.is_group and p.group_members):
+        return []
+    ids = [m["student_id"] for m in p.group_members]
+    studs = {s.id: s for s in db.session.query(Student).filter(Student.id.in_(ids))}
+    return [{"student_id": m["student_id"], "role": m.get("role"), "is_submitter": m["student_id"] == p.student_id,
+             "name": studs[m["student_id"]].user.name, "registration_no": studs[m["student_id"]].registration_no}
+            for m in p.group_members if m["student_id"] in studs]
+
+
+def free_classmates(student):
+    """Batch-mates who can still be added to a group, for the picker."""
+    mates = (db.session.query(Student).filter(Student.batch_id == student.batch_id, Student.id != student.id)
+             .join(User, User.id == Student.user_id).filter(User.is_active.is_(True)).order_by(User.name).all())
+    return [m for m in mates if member_block_reason(m) is None]
+
+
+def clean_group(student, mode, members):
+    """Validate the individual/group choice. Returns (is_group, [{"student_id", "role"}, ...]) with the submitter first."""
+    if mode in (None, "", "individual"):
+        return False, None
+    if mode != "group":
+        raise AppError("Project type must be individual or group", 422, {"project_mode": "Choose individual or group"})
+    roles = {}
+    for m in members or []:
+        try:
+            sid = int(m.get("student_id"))
+        except (TypeError, ValueError, AttributeError):
+            raise AppError("Each group member needs a student", 422, {"members": "Invalid member"})
+        roles[sid] = str(m.get("role") or "").strip()[:MAX_ROLE_LEN]
+    mine = roles.pop(student.id, "") or LEAD_ROLE
+    if not roles:
+        raise AppError("Select at least one other student for a group project", 422, {"members": "Select your team mates"})
+    if len(roles) + 1 > MAX_GROUP_SIZE:
+        raise AppError(f"A group can have at most {MAX_GROUP_SIZE} students", 422, {"members": "Too many students"})
+    found = {s.id: s for s in db.session.query(Student).filter(Student.id.in_(list(roles))).all()}
+    problems = []
+    for sid in roles:
+        s = found.get(sid)
+        if s is None or s.batch_id != student.batch_id:
+            problems.append(f"Student #{sid} is not in your batch")
+        elif (why := member_block_reason(s)):
+            problems.append(why)
+    if problems:
+        raise AppError("Group not possible: " + "; ".join(problems[:4]), 422, {"members": problems})
+    return True, [{"student_id": student.id, "role": mine}] + [{"student_id": sid, "role": r} for sid, r in roles.items()]
+
+
 def upload_block_reason(student):
     """Why the student cannot upload right now (None = allowed). Drives the disabled state in the UI."""
     if has_project(student):
         return "A project has already been allocated to you, so you can no longer upload your own project."
+    grp = pending_group_of(student)
+    if grp:
+        return (f"{grp.student.user.name} added you to the group project “{grp.title}”, which is awaiting mentor approval. "
+                "The SRS opens for the whole group once it is approved.")
     open_ = (db.session.query(StudentProposal).filter(StudentProposal.student_id == student.id,
                                                       StudentProposal.status.in_(("pending", "approved"))).first())
     if open_:
@@ -47,7 +124,8 @@ def _clean_subdomain(student, subdomain_id):
     return sub
 
 
-def submit(student, title, summary, file_storage, user, dataset_files=None, subdomain_id=None, data_sheet=None):
+def submit(student, title, summary, file_storage, user, dataset_files=None, subdomain_id=None, data_sheet=None,
+           project_mode="individual", members=None):
     title = (title or "").strip()
     if not title:
         raise AppError("Title is required", 422, {"title": "Title is required"})
@@ -57,6 +135,7 @@ def submit(student, title, summary, file_storage, user, dataset_files=None, subd
     if reason:
         raise AppError(reason, 409)
     sub = _clean_subdomain(student, subdomain_id)
+    is_group, group = clean_group(student, project_mode, members)
     dataset_files = [f for f in (dataset_files or []) if f and f.filename]
     if len(dataset_files) > MAX_DATASETS:
         raise AppError(f"At most {MAX_DATASETS} datasets per project", 422, {"datasets": "Too many files"})
@@ -67,7 +146,8 @@ def submit(student, title, summary, file_storage, user, dataset_files=None, subd
     rows = data_collection.parse(data_sheet) if has_sheet else None
     attachment = file_service.save_upload(file_storage, "problem_statement", user.id)
     proposal = StudentProposal(data_collection=rows, student_id=student.id, title=title, summary=(summary or "").strip()[:5000] or None,
-                               file_id=attachment.id, subdomain_id=sub.id if sub else None)
+                               file_id=attachment.id, subdomain_id=sub.id if sub else None,
+                               is_group=is_group, group_members=group)
     db.session.add(proposal)
     db.session.flush()
     datasets = []
@@ -86,6 +166,10 @@ def submit(student, title, summary, file_storage, user, dataset_files=None, subd
     notify({m[0] for m in mentors}, "proposal_submitted", "Student project awaiting approval",
            f"{student.user.name} submitted “{title}” ({ps.ps_code}). Approve it so they can start the SRS.",
            "/mentor/proposals")
+    if is_group:
+        mates = db.session.query(Student).filter(Student.id.in_([m["student_id"] for m in group[1:]])).all()
+        notify({s.user_id for s in mates}, "group_proposal", "You were added to a group project",
+               f"{student.user.name} proposed “{title}” as a group project with you. It is awaiting mentor approval.", "/student/proposal")
     notify(domain_lead_user_ids(ps.domain_id), "shelf_student_project", "Student project added to the Project Shelf",
            f"“{ps.title}” ({ps.ps_code}) by {student.user.name} is on your shelf, awaiting mentor approval.",
            f"/lead/project-shelf/{ps.id}")
@@ -126,13 +210,16 @@ def review(proposal, decision, remarks, user):
     if proposal.status == "approved":
         ps.approval_status = "approved"
         project = _start_project(proposal, ps, user)
-        extra = f" It is on the Project Shelf as {ps.ps_code} and your project has started – you can now begin the SRS."
+        extra = f" It is on the Project Shelf as {ps.ps_code} and your project has started and is now in SRS Preparation – you can begin the SRS."
         notify(domain_lead_user_ids(ps.domain_id), "shelf_student_project", "Student project approved",
                f"“{ps.title}” ({ps.ps_code}) was approved and allocated to {proposal.student.user.name}.",
                f"/projects/{project.id}")
     else:
         ps.approval_status, ps.status = "rejected", "inactive"
-    notify({proposal.student.user_id}, "proposal_reviewed", f"Project {proposal.status}",
+    team = [proposal.student.user_id]
+    if proposal.is_group and proposal.group_members:
+        team = [s.user_id for s in db.session.query(Student).filter(Student.id.in_([m["student_id"] for m in proposal.group_members]))]
+    notify(set(team), "proposal_reviewed", f"Project {proposal.status}",
            f"“{proposal.title}” was {proposal.status}." + extra + (f" Remarks: {remarks}" if remarks else ""),
            "/student/project" if proposal.status == "approved" else "/student/proposal")
     return proposal
@@ -143,10 +230,21 @@ def _start_project(proposal, ps, mentor_user):
     from app.services import project_service  # local import: project_service imports this module
     student = proposal.student
     mentor = db.session.query(Mentor).filter_by(user_id=mentor_user.id).first()
+    if mentor and not db.session.query(BatchMentor.id).filter_by(batch_id=student.batch_id, mentor_id=mentor.id, is_active=True).first():
+        mentor = None            # an admin / lead who is not on this batch: the batch's own mentors apply
+    ids = [m["student_id"] for m in proposal.group_members] if proposal.is_group and proposal.group_members else [student.id]
     projects = project_service.allocate(
-        student.batch, [{"problem_statement_id": ps.id, "student_ids": [student.id], "team": False}], mentor_user,
-        mentor_id=mentor.id if mentor else None)
-    return projects[0]
+        student.batch, [{"problem_statement_id": ps.id, "student_ids": ids, "team": len(ids) > 1}], mentor_user,
+        mentor_id=mentor.id if mentor else None, project_type="other")   # Academic OU: a student's own idea is "Other"
+    project = projects[0]
+    if len(ids) > 1:                                  # the roles the group chose, the submitter is the team lead
+        roles = {m["student_id"]: m.get("role") or None for m in proposal.group_members}
+        for pm in project.members:
+            pm.role = roles.get(pm.student_id)
+    # approval is the green light: the project moves straight on to SRS Preparation (done as the student, who owns that step)
+    from app.services import lifecycle
+    lifecycle.transition(project, "srs_preparation", student.user, f"Proposal approved by {mentor_user.name}")
+    return project
 
 
 def withdraw_pending(student_ids):

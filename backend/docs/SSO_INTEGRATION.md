@@ -70,14 +70,14 @@ X-Signature: sha256=<hex HMAC-SHA256 of the raw request body, key = SHARED_SECRE
 | `batches[].details` | no | Values for the OU's custom batch fields. Required *text* fields you leave out are filled with `Imported from <portal name>`; other required fields (dates, numbers, choices) must be sent, otherwise the batch is reported under `problems`. |
 | `students[].email` | yes | Unique key for a student. |
 | `students[].name` | yes (new student) | At least 2 characters. |
-| `students[].registration_no` | no | Generated (`ICT_STU_XXXXXX`) when omitted. |
+| `students[].registration_no` | no | Generated (`<OU>_<MODE>_NNNN`, e.g. `ACADEMIC_ONLINE_0001`) when omitted. |
 | `students[].phone` | no | |
 
 Limits: 200 batches and 5 000 students per request.
 
 ### What ICTAK does
 
-* **New batch** → created with an `ICT_<DOMAIN>_XXXXXX` code, the domain lead is notified (to set project dates), the domain's
+* **New batch** → created with a `<OU>_<MODE>_NNNN` code (e.g. `ACADEMIC_ONLINE_0001`), the domain lead is notified (to set project dates), the domain's
   mentors are assigned automatically.
 * **New student** → account created in that batch. Students are meant to sign in through SSO (section 2); an administrator can
   still issue a password from the batch page.

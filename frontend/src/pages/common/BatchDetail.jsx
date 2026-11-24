@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext'
 import useBasePath from '../../hooks/useBasePath'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
+import AddBatchMentorsModal from '../../components/AddBatchMentorsModal'
 import Modal from '../../components/Modal'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Alert from '../../components/Alert'
@@ -26,6 +27,7 @@ function MentorsTab({ batch, canManage }) {
   const [busy, setBusy] = useState(false)
   const [dialogError, setDialogError] = useState('')
   const [notice, setNotice] = useState('')
+  const [addMany, setAddMany] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -63,7 +65,7 @@ function MentorsTab({ batch, canManage }) {
       <Alert>{error}</Alert>
       {canManage && (
         <div className="flex flex-wrap gap-2">
-          <button className="btn-primary" onClick={() => open('assign')}><UserPlus className="h-4 w-4" />Assign mentor</button>
+          <button className="btn-primary" onClick={() => setAddMany(true)}><UserPlus className="h-4 w-4" />Add mentors</button>
           <button className="btn-secondary" disabled={busy} onClick={assignAll}>Assign all {batch.domain?.name || 'domain'} mentors</button>
         </div>
       )}
@@ -78,6 +80,7 @@ function MentorsTab({ batch, canManage }) {
           </div>
         ) }] : []),
       ]} />
+      {addMany && <AddBatchMentorsModal batch={batch} onClose={() => setAddMany(false)} onDone={() => { setAddMany(false); load() }} />}
       {dialog && dialog.type === 'remove' && (
         <ConfirmDialog danger confirmLabel="Remove" busy={busy} message={`Remove ${dialog.mentor.name} from this batch? Their access to the batch's projects ends.`}
           onConfirm={run} onCancel={() => setDialog(null)} />

@@ -95,11 +95,11 @@ def test_batch_import_rowwise_errors_block_confirm(client, admin):
             ["AC-5", "Missing req", "AIML", "", "", "", "", "", "", ""]]
     r = upload(client, admin, "batches", ou("ACADEMIC").id, csv_bytes(ACADEMIC_HEADER, rows))
     d = r.get_json()["data"]
-    assert d["valid_rows"] == 1 and d["error_rows"] == 5
+    assert d["valid_rows"] == 2 and d["error_rows"] == 4          # a blank batch code is fine: the system issues one
     by_row = {p["row_number"]: p for p in d["preview"]}
     assert by_row[2]["status"] == "valid"
     assert "Duplicate" in by_row[3]["errors"][0]["message"]
-    assert any("Domain code 'NOPE'" in e["message"] for e in by_row[5]["errors"])
+    assert any("Domain 'NOPE'" in e["message"] for e in by_row[5]["errors"])
     assert any(e["field"] == "start_date" for e in by_row[6]["errors"])
     assert {e["field"] for e in by_row[7]["errors"]} >= {"details.university", "details.college", "details.programme"}
     # refuses silently-partial import
@@ -107,7 +107,8 @@ def test_batch_import_rowwise_errors_block_confirm(client, admin):
     assert db.session.query(Batch).count() == 0
     # explicit valid-only import works
     ok_ = client.post(f"/api/imports/{d['id']}/confirm", headers=admin, json={"import_valid_only": True})
-    assert ok_.status_code == 200 and db.session.query(Batch).count() == 1
+    assert ok_.status_code == 200 and db.session.query(Batch).count() == 2
+    assert sorted(b.code for b in db.session.query(Batch)) == ["AC-1", "ACADEMIC_ONLINE_0001"]
 
 
 def test_batch_import_detects_existing_codes(client, admin):
@@ -154,7 +155,7 @@ def test_errors_csv_download_and_formula_injection_guard(client, admin):
     jid = r.get_json()["data"]["id"]
     c = client.get(f"/api/imports/{jid}/errors.csv", headers=admin)
     text = c.data.decode()
-    assert c.status_code == 200 and text.startswith("row_number,field,error,Batch Code,Batch Name,Domain Code")
+    assert c.status_code == 200 and text.startswith("row_number,field,error,Batch Code,Batch Name,Domain Name")
     assert "'=cmd" in text  # neutralised
 
 
@@ -222,3 +223,26 @@ def test_student_import_uses_ou_specific_student_fields(client, admin, academic_
     client.post(f"/api/imports/{d['id']}/confirm", headers=admin, json={})
     assert db.session.query(Student).one().extra_fields == {"roll_number": "77"}
     assert db.session.query(User).filter_by(email="ab@x.com").one().is_active
+
+
+def test_batch_import_template_has_domain_dropdowns_and_subdomain_import(client, make_user, login):
+    import io
+    from openpyxl import load_workbook
+    from app.models import Domain, OrganisationalUnit, Subdomain
+    make_user("admin", "adm@x.com")
+    h = login("adm@x.com")
+    d = db.session.query(Domain).filter_by(code="AIML").one()
+    db.session.add(Subdomain(domain_id=d.id, name="Computer Vision"))
+    db.session.commit()
+    ou = db.session.query(OrganisationalUnit).filter_by(code="ACADEMIC").one()
+    r = client.get(f"/api/ous/{ou.id}/template?type=batches&format=xlsx", headers=h)
+    ws = load_workbook(io.BytesIO(r.data))["Data"]
+    headers = [c.value for c in ws[1]]
+    assert {"Domain Name", "Domain ID", "SubDomain"} <= set(headers)
+    assert ws.data_validations.dataValidation and str(ws.cell(row=2, column=headers.index("Domain ID") + 1).value).startswith("=IF(")
+    csv_text = ("Batch Name,Domain Name,SubDomain,University,College,Programme\n"
+                f"B1,{d.name},Computer Vision,KU,CET,BTech\nB2,{d.name},Nope,KU,CET,BTech\n")
+    up = client.post(f"/api/imports/batches", headers=h, content_type="multipart/form-data",
+                     data={"ou_id": ou.id, "file": (io.BytesIO(csv_text.encode()), "b.csv")})
+    body = up.get_json()["data"]
+    assert body["valid_rows"] == 1 and body["error_rows"] == 1

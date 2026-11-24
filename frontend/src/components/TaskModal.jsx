@@ -101,7 +101,7 @@ export default function TaskModal({ projectId, taskId, members, permissions, onC
                     <li key={m.student_id}><label className="flex items-center gap-2 text-sm">
                       <input type="checkbox" checked={form.assigned_student_ids.includes(m.student_id)}
                         onChange={() => setForm((f) => ({ ...f, assigned_student_ids: f.assigned_student_ids.includes(m.student_id) ? f.assigned_student_ids.filter((x) => x !== m.student_id) : [...f.assigned_student_ids, m.student_id] }))} />
-                      {m.name}</label></li>
+                      {m.name}{m.role && <span className="text-xs text-slate-500">· {m.role}</span>}</label></li>
                   ))}
                   {members.length === 0 && <li className="text-xs text-slate-500">No team members.</li>}
                 </ul>{err('assigned_student_ids')}</fieldset>

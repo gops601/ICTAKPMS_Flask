@@ -1,7 +1,8 @@
 """Keep everything that belongs to a domain connected, without anyone having to remember to do it.
 
-* A new batch automatically gets every active mentor of its domain.
-* A new mentor is automatically added to every active batch of their domain.
+* A new batch automatically gets the domain lead(s) of its domain as mentors (a lead is a mentor by default).
+  Other mentors are never added automatically: the admin / lead adds them explicitly on the batch.
+* A new domain lead (who is also a mentor) is added to every active batch of the domains they lead.
 * Whenever something is created under a domain that has no lead, the administrators are told (nobody would see it).
 * `repair()` (run at startup via `flask sync-data`) heals batches that ended up with no mentor and reports leads
   without a domain and domains without a lead. It never re-adds a mentor a lead deliberately removed from a batch that
@@ -47,29 +48,38 @@ def domain_mentors(domain_id):
             .filter(mentor_in_domains([domain_id]), User.is_active.is_(True)).all())
 
 
+def lead_mentors(domain_id):
+    """Active mentor profiles of the domain's lead(s): the only mentors a batch gets by default."""
+    if not domain_id:
+        return []
+    return (db.session.query(Mentor).join(User, User.id == Mentor.user_id)
+            .filter(Mentor.user_id.in_(db.select(DomainLead.user_id).where(DomainLead.domain_id == domain_id)),
+                    User.is_active.is_(True)).all())
+
+
 def _active_mentor_ids(batch_id):
     return {l.mentor_id for l in db.session.query(BatchMentor).filter_by(batch_id=batch_id, is_active=True)}
 
 
 def auto_assign_mentors(batch, actor):
-    """Put every active mentor of the batch's domain on the batch. Returns the mentors added."""
+    """Put the batch's domain lead(s) on the batch as mentors. Returns the mentors added."""
     if not batch.domain_id or batch.status != "active":
         return []
     on_batch = _active_mentor_ids(batch.id)
-    added = [m for m in domain_mentors(batch.domain_id) if m.id not in on_batch]
+    added = [m for m in lead_mentors(batch.domain_id) if m.id not in on_batch]
     for m in added:
         project_service.assign_batch_mentor(batch, m, actor)
     if added:
         notify(domain_lead_user_ids(batch.domain_id), "batch_mentors_auto", "Mentors assigned to your batch",
                f"{', '.join(m.user.name for m in added)} {'was' if len(added) == 1 else 'were'} automatically assigned to "
-               f"batch {batch.code} (their domain is {batch.domain.name}). You can change this on the batch page.",
+               f"batch {batch.code} as its mentor (domain lead of {batch.domain.name}). You can add more mentors on the batch page.",
                f"/lead/batches/{batch.id}")
     return added
 
 
 def auto_assign_mentor_to_batches(mentor, actor):
-    """A new mentor joins every active batch of their domain. Returns the batches joined."""
-    domains = mentor_domain_ids(mentor)
+    """A domain lead (as a mentor) joins every active batch of the domains they lead; other mentors are not auto-added."""
+    domains = {r[0] for r in db.session.query(DomainLead.domain_id).filter_by(user_id=mentor.user_id)}
     if not domains:
         return []
     joined = []

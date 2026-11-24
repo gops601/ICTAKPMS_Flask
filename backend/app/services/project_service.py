@@ -11,7 +11,7 @@ from app.services.metrics_service import DEFAULT_WEIGHTS, PROJECT_WEEKS, progres
 from app.services.fields import parse_date
 from app.services.notification_service import domain_lead_user_ids, notify
 from app.utils.errors import AppError, NotFound
-from app.utils.ids import generate_id
+from app.utils.ids import next_scoped_id
 
 MAX_STUDENTS_PER_REQUEST = 200
 
@@ -53,7 +53,21 @@ def _eligible_batch_mentor(batch, mentor_id):
 
 
 # ---------------------------------------------------------------- allocation
-def allocate(batch, items, actor, mentor_id=None, start_date=None):
+def clean_project_type(batch, project_type):
+    """Academic OU projects must say what kind they are; every other OU has no project type."""
+    from app.models.project import ACADEMIC_OU_CODE, PROJECT_TYPES
+    if batch.ou.code != ACADEMIC_OU_CODE:
+        return None
+    if not project_type:
+        raise AppError("Choose the project type (Add-on Course, Summer Internship or Other)", 422,
+                       {"project_type": "Project type is required for Academic OU projects"})
+    if project_type not in PROJECT_TYPES:
+        raise AppError("Project type must be one of: " + ", ".join(PROJECT_TYPES.values()), 422,
+                       {"project_type": "Invalid project type"})
+    return project_type
+
+
+def allocate(batch, items, actor, mentor_id=None, start_date=None, project_type=None):
     """Allocate problem statements to students/teams. All-or-nothing; returns the created projects.
 
     items: [{"problem_statement_id": int, "student_ids": [int], "team": bool}]
@@ -72,6 +86,7 @@ def allocate(batch, items, actor, mentor_id=None, start_date=None):
         raise AppError("The project start date must be before the batch's project end date", 422,
                        {"start_date": f"Must be before {end.isoformat()}"})
     mentor = _eligible_batch_mentor(batch, mentor_id) if mentor_id else None
+    project_type = clean_project_type(batch, project_type)
 
     all_ids = [sid for it in items for sid in it["student_ids"]]
     if len(all_ids) != len(set(all_ids)):
@@ -106,7 +121,7 @@ def allocate(batch, items, actor, mentor_id=None, start_date=None):
             raise AppError(f"'{ps.ps_code}' has not been approved by a mentor yet and cannot be allocated", 422)
         groups = [it["student_ids"]] if it.get("team") else [[sid] for sid in it["student_ids"]]
         for group in groups:
-            created.append(_create_project(batch, ps, [students[i] for i in group], actor, mentor, start, end))
+            created.append(_create_project(batch, ps, [students[i] for i in group], actor, mentor, start, end, project_type))
 
     db.session.flush()
     proposal_service.withdraw_pending(all_ids)
@@ -114,10 +129,10 @@ def allocate(batch, items, actor, mentor_id=None, start_date=None):
     return created
 
 
-def _create_project(batch, ps, members, actor, mentor, start, end=None):
-    project = Project(code=generate_id("PRJ", lambda c: db.session.query(Project.id).filter_by(code=c).first() is not None),
+def _create_project(batch, ps, members, actor, mentor, start, end=None, project_type=None):
+    project = Project(code=next_scoped_id(batch.ou.code, batch.mode, Project.code),
                       batch_id=batch.id, problem_statement_id=ps.id, mentor_id=mentor.id if mentor else None,
-                      title=ps.title, stage="allocated", start_date=start,
+                      title=ps.title, stage="allocated", start_date=start, project_type=project_type,
                       target_end_date=end or start + timedelta(weeks=weeks_for(batch.mode)))
     db.session.add(project)
     db.session.flush()
@@ -245,7 +260,9 @@ def assign_batch_mentor(batch, mentor, actor):
     db.session.flush()
     notify({mentor.user_id}, "batch_assigned", "New batch assigned",
            f"You have been assigned to batch {batch.code} – {batch.name}.", f"/mentor/batches/{batch.id}")
-    students = db.session.query(Student).filter_by(batch_id=batch.id).all()
+    # students hear about a mentor only once they have a project: before that, nobody is "their" mentor yet
+    students = (db.session.query(Student).filter_by(batch_id=batch.id)
+                .filter(Student.id.in_(db.select(ProjectStudent.student_id))).all())
     notify({s.user_id for s in students}, "mentor_assigned", "Mentor assigned",
            f"{mentor.user.name} is now a mentor for your batch.", "/student/project")
 
@@ -280,6 +297,115 @@ def reassign_batch_mentor(batch, from_mentor, to_mentor, actor):
     db.session.flush()
     notify({from_mentor.user_id}, "batch_unassigned", "Batch reassigned",
            f"You are no longer assigned to batch {batch.code}.", None)
+
+
+MAX_TEAM_SIZE = 12
+
+
+def set_project_members(project, members, actor, reason=None):
+    """Replace the project's team and roles. Only mentors of the project, the domain lead and admins call this (the route checks).
+
+    members: [{"student_id", "role", "is_lead"}]. Students must belong to the project's batch and be free (or already in this
+    project). Removed students lose their Scrum assignments on this project; added and removed students are notified.
+    """
+    from app.models import ScrumBoard, ScrumTask, ScrumTaskAssignee
+    ids, roles, lead = [], {}, None
+    for m in members:
+        sid = m["student_id"]
+        if sid in roles:
+            raise AppError("A student appears more than once", 422, {"members": "Duplicate student"})
+        ids.append(sid)
+        roles[sid] = (m.get("role") or "").strip()[:60] or None
+        if m.get("is_lead") and lead is None:
+            lead = sid
+    if not ids:
+        raise AppError("A project needs at least one student", 422, {"members": "Select at least one student"})
+    if len(ids) > MAX_TEAM_SIZE:
+        raise AppError(f"A team can have at most {MAX_TEAM_SIZE} students", 422, {"members": "Too many students"})
+    students = {s.id: s for s in db.session.query(Student).filter(Student.id.in_(ids)).all()}
+    current = {pm.student_id: pm for pm in project.members}
+    problems = []
+    for sid in ids:
+        s = students.get(sid)
+        if not s or s.batch_id != project.batch_id:
+            problems.append(f"Student #{sid} is not in this batch")
+        elif sid not in current and db.session.query(ProjectStudent.id).filter_by(student_id=sid).first():
+            problems.append(f"{s.user.name} already has a project")
+    if problems:
+        raise AppError("Team not changed: " + "; ".join(problems[:4]), 422, {"members": problems})
+    if len(ids) > 1 and lead is None:
+        lead = ids[0]
+    removed = [sid for sid in current if sid not in roles]
+    added = [sid for sid in ids if sid not in current]
+    for sid in removed:
+        db.session.delete(current[sid])
+    board = db.session.query(ScrumBoard).filter_by(project_id=project.id).first()
+    if removed and board:                                   # drop their task assignments on this board
+        task_ids = [t[0] for t in db.session.query(ScrumTask.id).filter_by(board_id=board.id)]
+        if task_ids:
+            db.session.query(ScrumTaskAssignee).filter(ScrumTaskAssignee.task_id.in_(task_ids),
+                                                       ScrumTaskAssignee.student_id.in_(removed)).delete(synchronize_session=False)
+            db.session.query(ScrumTask).filter(ScrumTask.id.in_(task_ids), ScrumTask.assigned_student_id.in_(removed)).update(
+                {"assigned_student_id": None}, synchronize_session=False)
+    for sid in ids:
+        pm = current.get(sid)
+        if pm is None:
+            pm = ProjectStudent(project_id=project.id, student_id=sid)
+            db.session.add(pm)
+        pm.role, pm.is_lead = roles[sid], (len(ids) > 1 and sid == lead)
+    db.session.flush()
+    db.session.expire(project)
+    reason = (reason or "").strip() or None
+    db.session.add(ProjectAssignment(project_id=project.id, assignment_type="reassignment", assigned_by=actor.id,
+                                     notes=("Team changed" + (f": {reason}" if reason else ""))[:500]))
+    lifecycle.log_activity(project.id, actor.id, "team.changed", {"added": added, "removed": removed, "reason": reason})
+    notify({students[s].user_id for s in added}, "project_allocated", "You were added to a project",
+           f"You are now part of “{project.title}”.", "/student/project")
+    gone = db.session.query(Student).filter(Student.id.in_(removed or [-1])).all()
+    notify({s.user_id for s in gone}, "project_unassigned", "Removed from a project",
+           f"You are no longer part of “{project.title}”." + (f" Reason: {reason}" if reason else ""), None)
+    return project
+
+
+def transfer_mentor(from_mentor, to_mentor, batches, actor):
+    """Take a mentor off every given batch (and the projects they mentor there), handing the work to `to_mentor`.
+
+    `to_mentor=None` simply removes the mentor; their projects fall back to the batch's remaining mentors. Only the
+    batches passed in are touched, so a domain lead never reaches outside their own domains. Returns a summary.
+    """
+    if to_mentor is not None:
+        if from_mentor.id == to_mentor.id:
+            raise AppError("Choose a different mentor", 422)
+        if not to_mentor.user.is_active:
+            raise AppError("That mentor's account is inactive", 422)
+    batches_done = projects_done = 0
+    for batch in batches:
+        on_batch = db.session.query(BatchMentor).filter_by(batch_id=batch.id, mentor_id=from_mentor.id, is_active=True).first()
+        affected = projects_with_mentor(batch.id, from_mentor.id)
+        if not on_batch and not affected:
+            continue
+        if on_batch and to_mentor is not None:
+            reassign_batch_mentor(batch, from_mentor, to_mentor, actor)           # also swaps the project overrides
+        elif on_batch:
+            remove_batch_mentor(batch, from_mentor)
+        else:                                                                    # project-only assignment (admin override)
+            for p in affected:
+                _store_mentors(p, list(dict.fromkeys(to_mentor.id if m.id == from_mentor.id else m.id
+                                                     for m in mentors_for_project(p)))
+                               if to_mentor else [m.id for m in mentors_for_project(p) if m.id != from_mentor.id])
+        batches_done += 1 if on_batch else 0
+        projects_done += len(affected)
+        if not on_batch or to_mentor is None:
+            for p in affected:
+                db.session.add(ProjectAssignment(project_id=p.id, assignment_type="reassignment",
+                                                 mentor_id=to_mentor.id if to_mentor else None, assigned_by=actor.id,
+                                                 notes=f"Mentor {from_mentor.user.name} " + (f"replaced by {to_mentor.user.name}" if to_mentor else "removed")))
+                lifecycle.log_activity(p.id, actor.id, "mentor.changed", {"from": from_mentor.id, "to": to_mentor.id if to_mentor else None})
+    if to_mentor is not None and projects_done:
+        notify({to_mentor.user_id}, "project_allocated", "Projects assigned to you",
+               f"{projects_done} project(s) were handed over to you from {from_mentor.user.name}.", None)
+    db.session.flush()
+    return {"batches": batches_done, "projects": projects_done}
 
 
 # --------------------------------------------------------------- progress

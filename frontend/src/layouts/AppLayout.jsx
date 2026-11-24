@@ -55,7 +55,7 @@ export default function AppLayout() {
   }
 
   const sidebar = (
-    <div className="flex h-full flex-col border-r border-rose-100 bg-gradient-to-b from-rose-50 via-orange-50 to-amber-50 p-4">
+    <div className="flex h-full flex-col border-r border-rose-100 bg-gradient-to-b from-rose-50 via-white to-rose-50 p-4">
       <div className="mb-6 flex items-center gap-3 px-2">
         <LogoMark size={38} />
         <div>

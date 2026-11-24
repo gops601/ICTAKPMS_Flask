@@ -7,6 +7,7 @@ import Alert from '../../components/Alert'
 import Spinner from '../../components/Spinner'
 import PageHeader from '../../components/PageHeader'
 import { EmptyState } from '../../components/illustrations'
+import MyMentorsCard from '../../components/MyMentorsCard'
 
 export default function MyProject() {
   const [state, setState] = useState({ loading: true, projects: [], error: '' })
@@ -23,9 +24,11 @@ export default function MyProject() {
     return (
       <div>
         <PageHeader title="My Project" />
-        <div className="card"><EmptyState title="No project has been allocated to you yet.">Your mentor or Domain Lead will allocate one &ndash; or <Link className="text-brand underline" to="/student/proposal">add your own project</Link>. You&apos;ll be notified.</EmptyState></div>
+        <div className="space-y-4">
+          <div className="card"><EmptyState title="No project has been allocated to you yet.">Your mentor or Domain Lead will allocate one &ndash; or <Link className="text-brand underline" to="/student/proposal">add your own project</Link>. You&apos;ll be notified.</EmptyState></div>
+        </div>
       </div>
     )
   }
-  return <ProjectView id={state.projects[0].id} />
+  return <div className="space-y-4"><MyMentorsCard /><ProjectView id={state.projects[0].id} /></div>
 }

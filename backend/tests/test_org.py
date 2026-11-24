@@ -112,16 +112,17 @@ def test_batch_validation_errors(client, admin):
     errs = r.get_json()["errors"]
     assert r.status_code == 422
     assert {"name", "end_date", "details.bogus", "details.university"} <= set(errs)
-    assert "code" not in errs  # a blank batch code is replaced by a generated ICT_BATCH_ id
+    assert "code" not in errs  # a blank batch code is replaced by a generated <OU>_<MODE>_NNNN id
 
 
-def test_batch_id_is_generated_from_the_domain_short_code(client, admin):
+def test_batch_id_is_generated_from_the_ou_and_mode(client, admin):
     import re
     a = client.post("/api/batches", headers=admin, json=batch_body()).get_json()["data"]
     b = client.post("/api/batches", headers=admin, json=batch_body(code="B-001")).get_json()["data"]  # supplied code is ignored
     c = client.post("/api/batches", headers=admin, json=batch_body(domain_id=domain("IOT").id)).get_json()["data"]
-    assert re.fullmatch(r"ICT_AIML_[A-Z2-9]{6}", a["code"]) and re.fullmatch(r"ICT_AIML_[A-Z2-9]{6}", b["code"])
-    assert re.fullmatch(r"ICT_IOT_[A-Z2-9]{6}", c["code"]) and a["code"] != b["code"]
+    assert (a["code"], b["code"], c["code"]) == ("ACADEMIC_ONLINE_0001", "ACADEMIC_ONLINE_0002", "ACADEMIC_ONLINE_0003")
+    off = client.post("/api/batches", headers=admin, json=batch_body(mode="offline")).get_json()["data"]
+    assert off["code"] == "ACADEMIC_OFFLINE_0001"                         # each OU + mode has its own counter
     assert a["code"] != "B-001"
     # the ID never changes, even when the batch is edited or moved to another domain
     r = client.put(f"/api/batches/{a['id']}", headers=admin, json={"code": "HACK", "name": "Renamed", "domain_id": domain("IOT").id})
@@ -194,3 +195,37 @@ def test_create_single_student(client, admin):
     assert client.post("/api/students", headers=admin, json={**body, "registration_no": "R2"}).status_code == 409
     listing = client.get(f"/api/students?batch_id={bid}", headers=admin).get_json()
     assert listing["meta"]["total"] == 1
+
+
+def test_create_batch_with_students_in_one_step(client, admin):
+    students = [{"name": "Asha K", "email": "asha@x.com", "phone": "999", "registration_no": ""},
+                {"name": "Ben T", "email": "ben@x.com"}]
+    r = client.post("/api/batches", headers=admin, json=batch_body(students=students))
+    assert r.status_code == 201
+    data = r.get_json()["data"]
+    assert len(data["credentials"]) == 2 and all(c["temporary_password"] for c in data["credentials"])
+    listed = client.get(f"/api/students?batch_id={data['id']}", headers=admin).get_json()["data"]
+    assert {s["email"] for s in listed} == {"asha@x.com", "ben@x.com"}
+
+
+def test_create_batch_with_invalid_students_creates_nothing(client, admin):
+    bad = [{"name": "Asha K", "email": "dup@x.com"}, {"name": "Ben T", "email": "DUP@x.com"}]
+    r = client.post("/api/batches", headers=admin, json=batch_body(students=bad))
+    assert r.status_code == 422
+    assert db.session.query(Batch).count() == 0
+
+
+def test_batch_with_subdomain(client, admin):
+    from app.models import Subdomain
+    d = domain("AIML")
+    sd = Subdomain(domain_id=d.id, name="Computer Vision")
+    db.session.add(sd)
+    db.session.commit()
+    p = {"subdomain_id": sd.id, "students": [{"name": "Asha K", "email": "asha@x.com"}]}
+    body = batch_body(subdomain_id=p["subdomain_id"], students=p["students"])
+    c = client.post("/api/batches", headers=admin, json=body)
+    assert c.status_code == 201 and c.get_json()["data"]["subdomain"]["name"] == "Computer Vision"
+    other = Subdomain(domain_id=domain("CYBER").id, name="Forensics")
+    db.session.add(other); db.session.commit()
+    bad = client.post("/api/batches", headers=admin, json=batch_body(subdomain_id=other.id))
+    assert bad.status_code == 422

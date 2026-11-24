@@ -79,6 +79,7 @@ class Batch(TimestampMixin, db.Model):
     name = db.Column(db.String(150), nullable=False)
     ou_id = db.Column(db.Integer, db.ForeignKey("organisational_units.id", ondelete="RESTRICT"), nullable=False, index=True)
     domain_id = db.Column(db.Integer, db.ForeignKey("domains.id", ondelete="RESTRICT"), index=True)
+    subdomain_id = db.Column(db.Integer, db.ForeignKey("subdomains.id", ondelete="SET NULL"), index=True)
     start_date = db.Column(db.Date)
     end_date = db.Column(db.Date)
     status = db.Column(db.String(20), default="active", nullable=False)  # active | closed
@@ -93,6 +94,7 @@ class Batch(TimestampMixin, db.Model):
 
     ou = db.relationship("OrganisationalUnit", back_populates="batches")
     domain = db.relationship("Domain", back_populates="batches")
+    subdomain = db.relationship("Subdomain")
     ou_details = db.relationship("BatchOUDetail", back_populates="batch", cascade="all, delete-orphan")
     students = db.relationship("Student", back_populates="batch")
     batch_mentors = db.relationship("BatchMentor", back_populates="batch", cascade="all, delete-orphan")

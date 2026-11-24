@@ -6,7 +6,7 @@ from app.extensions import db
 from app.models import (Batch, BatchMentor, Domain, DomainLead, Mentor, OrganisationalUnit, ProblemStatement, Project, ProjectStudent, User,
                         Student)
 
-ICT = re.compile(r"^ICT_[A-Z]+_[A-Z2-9]{6}$")
+OUID = re.compile(r"^[A-Z]+_(ONLINE|OFFLINE)_[0-9]{4}$")    # batches, students and projects: <OU>_<MODE>_NNNN
 
 
 def domain(code):
@@ -54,7 +54,7 @@ def test_mentor_allocates_to_a_student_and_a_group_with_ict_project_ids(client, 
     r2 = allocate(client, world, "m1", ["s2", "s3"], team=True)
     assert r2.status_code == 201
     codes = [p.code for p in db.session.query(Project).all()]
-    assert len(codes) == 2 and all(ICT.match(c) for c in codes) and len(set(codes)) == 2
+    assert sorted(codes) == [codes[0][:-4] + "0001", codes[0][:-4] + "0002"] and all(OUID.match(c) for c in codes)
     assert r2.get_json()["data"][0]["code"] == codes[1] and len(r2.get_json()["data"][0]["members"]) == 2
 
 
@@ -126,14 +126,36 @@ def test_student_registration_number_is_generated_when_blank(client, world):
     r = client.post("/api/students", headers=world["H"]["admin"],
                     json={"name": "New Student", "email": "new@x.com", "batch_id": world["batch"].id})
     assert r.status_code == 201, r.get_json()
-    assert ICT.match(r.get_json()["data"]["student"]["registration_no"]) if "student" in r.get_json()["data"] \
-        else ICT.match(r.get_json()["data"]["registration_no"])
+    body = r.get_json()["data"]
+    reg = body["student"]["registration_no"] if "student" in body else body["registration_no"]
+    assert OUID.match(reg) and reg.endswith("_0001")
+    r = client.post("/api/students", headers=world["H"]["admin"],
+                    json={"name": "Next Student", "email": "next@x.com", "batch_id": world["batch"].id})
+    body = r.get_json()["data"]
+    assert (body["student"]["registration_no"] if "student" in body else body["registration_no"]).endswith("_0002")
 
 
 def test_id_generator_mixes_letters_and_digits():
     from app.utils.ids import generate_id
-    ids = {generate_id("PRJ", lambda c: False) for _ in range(200)}
-    assert all(ICT.match(i) and re.search(r"\d", i[8:]) and re.search(r"[A-Z]", i[8:]) for i in ids)
+    ids = {generate_id("PS", lambda c: False) for _ in range(200)}
+    assert all(re.match(r"^ICT_PS_[A-Z2-9]{6}$", i) and re.search(r"[0-9]", i[7:]) and re.search(r"[A-Z]", i[7:]) for i in ids)
+
+
+def test_scoped_ids_count_per_ou_and_mode(client, world):
+    """ACADEMIC_ONLINE_0001, ..._0002; offline and other OUs count separately; numbers are never reused."""
+    from app.models import Batch, OrganisationalUnit
+    from app.utils.ids import next_scoped_id
+    academic = db.session.query(OrganisationalUnit).filter_by(code="ACADEMIC").one()
+    assert next_scoped_id("ACADEMIC", "online", Batch.code) == "ACADEMIC_ONLINE_0001"
+    db.session.add(Batch(code="ACADEMIC_ONLINE_0001", name="A", ou_id=academic.id, mode="online"))
+    db.session.add(Batch(code="ACADEMIC_ONLINE_0007", name="B", ou_id=academic.id, mode="online"))
+    db.session.flush()
+    assert next_scoped_id("ACADEMIC", "online", Batch.code) == "ACADEMIC_ONLINE_0008"
+    assert next_scoped_id("ACADEMIC", "offline", Batch.code) == "ACADEMIC_OFFLINE_0001"
+    assert next_scoped_id("RETAIL", "online", Batch.code) == "RETAIL_ONLINE_0001"
+    db.session.add(Batch(code="ACADEMIC_ONLINE_9999", name="C", ou_id=academic.id, mode="online"))
+    db.session.flush()
+    assert next_scoped_id("ACADEMIC", "online", Batch.code) == "ACADEMIC_ONLINE_10000"       # grows past 4 digits
 
 
 # ------------------------------------------------ admin reallocates a running project to any mentor

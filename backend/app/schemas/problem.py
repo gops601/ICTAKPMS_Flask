@@ -1,5 +1,7 @@
 from marshmallow import EXCLUDE, Schema, fields, validate
 
+from app.extensions import db
+
 
 class _Base(Schema):
     class Meta:
@@ -56,6 +58,12 @@ def ps_to_dict(ps, detail=False, can_edit=False):
            "proposed_by": {"id": ps.proposer.id, "name": ps.proposer.user.name} if ps.proposer else None, "estimated_duration": ps.estimated_duration,
            "created_at": ps.created_at.isoformat(), "dataset_count": len(ps.datasets),
            "document_count": len(ps.documents)}
+    if ps.proposed_by_student_id:                       # a student's project: lets mentors / leads approve it from the shelf
+        from app.models import StudentProposal
+        from app.services import proposal_service
+        prop = db.session.query(StudentProposal).filter_by(problem_statement_id=ps.id).first()
+        out["proposal"] = ({"id": prop.id, "status": prop.status, "is_group": prop.is_group, "remarks": prop.remarks,
+                            "members": proposal_service.members_view(prop)} if prop else None)
     if detail:
         for f in ("description", "problem_definition", "objectives", "scope", "expected_outcomes",
                   "functional_requirements", "non_functional_requirements", "suggested_technologies",

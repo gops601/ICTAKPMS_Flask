@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Eye } from 'lucide-react'
+import { Eye, UserPlus } from 'lucide-react'
 import { batchService } from '../../services/adminService'
 import { useDebounced, useList } from '../../hooks/useList'
 import useBasePath from '../../hooks/useBasePath'
@@ -9,6 +9,8 @@ import DataTable from '../../components/DataTable'
 import Pagination from '../../components/Pagination'
 import StatusBadge from '../../components/StatusBadge'
 import Alert from '../../components/Alert'
+import AddBatchMentorsModal from '../../components/AddBatchMentorsModal'
+import { useAuth } from '../../context/AuthContext'
 
 /** Read-only list of the batches the signed-in lead/mentor may access (scoping is done by the API). */
 export default function MyBatches() {
@@ -16,8 +18,10 @@ export default function MyBatches() {
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
+  const { user } = useAuth()
+  const [adding, setAdding] = useState(null)
   const dq = useDebounced(q)
-  const { items, meta, loading, error } = useList(batchService.list, { q: dq, status: status || undefined, page })
+  const { items, meta, loading, error, reload } = useList(batchService.list, { q: dq, status: status || undefined, page })
 
   return (
     <div>
@@ -37,10 +41,15 @@ export default function MyBatches() {
           { key: 'domain', header: 'Domain', render: (b) => b.domain?.name || '—' },
           { key: 'student_count', header: 'Students' },
           { key: 'status', header: 'Status', render: (b) => <StatusBadge status={b.status} /> },
-          { key: 'actions', header: '', render: (b) => <Link className="btn-secondary" to={`${base}/batches/${b.id}`}><Eye className="h-4 w-4" />View</Link> },
+          { key: 'actions', header: '', render: (b) => (
+            <div className="flex flex-wrap gap-2">
+              <Link className="btn-secondary" to={`${base}/batches/${b.id}`}><Eye className="h-4 w-4" />View</Link>
+              {user.role === 'domain_lead' && b.status === 'active' && <button className="btn-secondary" aria-label={`Add mentors to ${b.code}`} onClick={() => setAdding(b)}><UserPlus className="h-4 w-4" />Add mentors</button>}
+            </div>) },
         ]} />
         <Pagination meta={meta} onPage={setPage} />
       </div>
+      {adding && <AddBatchMentorsModal batch={adding} onClose={() => setAdding(null)} onDone={() => { setAdding(null); reload() }} />}
     </div>
   )
 }

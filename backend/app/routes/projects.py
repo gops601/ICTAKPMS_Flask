@@ -5,11 +5,11 @@ from app.extensions import db
 from app.models import Batch, Mentor, Project, ProjectMentor, ProjectStudent, Student, User
 from app.permissions import current_user, login_required, roles_required
 from app.permissions.scope import ensure_batch_access, ensure_project_access, scoped_projects
-from app.schemas.project import (AllocationSchema, ProjectMentorSchema, ProjectMentorsSchema, ProjectSettingsSchema, ReassignProblemSchema,
+from app.schemas.project import (AllocationSchema, ProjectMembersSchema, ProjectMentorSchema, ProjectMentorsSchema, ProjectSettingsSchema, ReassignProblemSchema,
                                  ReopenSchema, TransitionSchema, project_to_dict, timeline)
 from app.services import lifecycle, project_service
 from app.utils.audit import audit
-from app.utils.errors import AppError
+from app.utils.errors import AppError, Forbidden
 from app.utils.responses import ok
 
 bp = Blueprint("projects", __name__, url_prefix="/api", description="Projects, allocation and lifecycle")
@@ -24,7 +24,7 @@ MANAGERS = ("admin", "domain_lead")
 def allocate(data):
     user = current_user()
     batch = ensure_batch_access(user, data["batch_id"])
-    projects = project_service.allocate(batch, data["items"], user, data["mentor_id"], data["start_date"])
+    projects = project_service.allocate(batch, data["items"], user, data["mentor_id"], data["start_date"], data["project_type"])
     audit(user.id, "project.allocate", "batch", batch.id, {"projects": len(projects)})
     db.session.commit()
     return ok([project_to_dict(p) for p in projects], f"{len(projects)} project(s) allocated", 201)
@@ -43,6 +43,8 @@ def list_projects():
     if a.get("mentor_id", type=int):
         mid = a.get("mentor_id", type=int)
         q = q.where(db.or_(Project.mentor_id == mid, Project.id.in_(db.select(ProjectMentor.project_id).where(ProjectMentor.mentor_id == mid))))
+    if a.get("project_type"):
+        q = q.where(Project.project_type == a["project_type"])
     if a.get("domain_id", type=int):
         q = q.where(Project.batch_id.in_(db.select(Batch.id).where(Batch.domain_id == a.get("domain_id", type=int))))
     if a.get("q"):
@@ -121,6 +123,23 @@ def set_mentors(data, project_id):
     audit(user.id, "project.mentors", "project", project.id, {"mentor_ids": data["mentor_ids"], "reason": data.get("reason")})
     db.session.commit()
     return ok(project_to_dict(project, True, user.role_name))
+
+
+@bp.put("/projects/<int:project_id>/members")
+@bp.doc(security=SEC, description="Change the team (students and their roles). Only the project's mentors, the domain lead and admins "
+                                  "may; students cannot change their own group.")
+@bp.arguments(ProjectMembersSchema)
+@roles_required("mentor", "domain_lead", "admin")
+def set_members(data, project_id):
+    from app.services.evaluation_service import is_assigned_mentor
+    user = current_user()
+    project = ensure_project_access(user, project_id)
+    if user.role_name == "mentor" and not is_assigned_mentor(user, project):
+        raise Forbidden("Only a mentor of this project, the domain lead or an admin can change the team")
+    project_service.set_project_members(project, data["members"], user, data.get("reason"))
+    audit(user.id, "project.members", "project", project.id, {"students": [m["student_id"] for m in data["members"]]})
+    db.session.commit()
+    return ok(project_to_dict(project, True, user.role_name), "Team updated")
 
 
 @bp.put("/projects/<int:project_id>/mentor")

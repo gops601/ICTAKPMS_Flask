@@ -117,7 +117,7 @@ def test_student_project_goes_onto_the_shelf_at_once_and_mentor_approval_starts_
     det = client.get(f"/api/problem-statements/{items[0]['id']}", headers=world["H"]["lead"]).get_json()["data"]
     assert det["approval_status"] == "approved"
     projects = client.get("/api/projects", headers=world["H"]["s1"]).get_json()["data"]
-    assert len(projects) == 1 and projects[0]["problem_statement"]["ps_code"] == items[0]["ps_code"] and projects[0]["stage"] == "allocated"
+    assert len(projects) == 1 and projects[0]["problem_statement"]["ps_code"] == items[0]["ps_code"] and projects[0]["stage"] == "srs_preparation"
     assert projects[0]["mentors"][0]["name"] == world["mentor_user"].name
     assert items[0]["ps_code"] in db.session.query(Notification).filter_by(type="proposal_reviewed").one().message
     assert client.get(f"/api/problem-statements/{det['id']}/datasets/{det['datasets'][0]['id']}/download", headers=world["H"]["lead"]).data == CSV
@@ -246,16 +246,21 @@ def test_batch_and_shelf_entry_created_by_admin_reach_the_domains_lead_and_mento
     assert db.session.query(Notification).filter_by(type="shelf_project_added").count() >= 2        # lead + domain mentor(s)
 
 
-def test_domain_mentors_join_a_domain_batch_automatically(client, world):
+def test_only_the_domain_lead_joins_a_batch_by_default_other_mentors_are_added_explicitly(client, world):
     H = world["H"]["lead"]
     for e in ("extra1", "extra2"):
         client.post("/api/admin/users", headers=world["H"]["admin"], json={"role": "mentor", "name": e, "email": f"{e}@x.com", "domain_id": domain("AIML").id})
     client.post("/api/admin/users", headers=world["H"]["admin"], json={"role": "mentor", "name": "iot", "email": "iot2@x.com", "domain_id": domain("IOT").id})
-    # no manual step: both new AIML mentors are already on the AIML batch, the IoT mentor is not
-    emails = {m["email"] for m in client.get(f"/api/batches/{world['batch'].id}/mentors", headers=H).get_json()["data"]}
-    assert {"m1@x.com", "extra1@x.com", "extra2@x.com"} <= emails and "iot2@x.com" not in emails
-    assert db.session.query(Notification).filter_by(type="batch_mentors_auto").count() >= 1       # the lead is told
-    # the one-click button is now just a safety net and does nothing when everyone is already assigned
+    # new mentors are NOT added automatically (the fixture put only m1 on the batch)
+    url = f"/api/batches/{world['batch'].id}/mentors"
+    emails = {m["email"] for m in client.get(url, headers=H).get_json()["data"]}
+    assert emails == {"m1@x.com"}
+    # ...and they are offered when adding mentors; the lead adds the ones wanted explicitly
+    ids = {m.user.email: m.id for m in db.session.query(Mentor).all()}
+    assert client.post(url + "/bulk", headers=H, json={"mentor_ids": [ids["extra1@x.com"], ids["extra2@x.com"]]}).status_code == 201
+    emails = {m["email"] for m in client.get(url, headers=H).get_json()["data"]}
+    assert emails == {"m1@x.com", "extra1@x.com", "extra2@x.com"}
+    # the one-click "assign whole domain" button remains an explicit action
     r = client.post(f"/api/batches/{world['batch'].id}/mentors/assign-domain", headers=H)
     assert r.status_code == 200 and r.get_json()["message"].startswith("0 mentor")
     assert client.post(f"/api/batches/{world['batch'].id}/mentors/assign-domain", headers=world["H"]["s1"]).status_code == 403
@@ -273,7 +278,7 @@ def test_new_batch_gets_its_domains_mentors_and_admins_are_warned_about_leadless
     b = client.post("/api/batches", headers=world["H"]["admin"], json={"name": "IoT batch", "ou_id": ou.id, "domain_id": ent.id, "details": {"programme_name": "P"}})
     assert b.status_code == 201
     mentors = client.get(f"/api/batches/{b.get_json()['data']['id']}/mentors", headers=world["H"]["admin"]).get_json()["data"]
-    assert [m["email"] for m in mentors] == ["iot@x.com"]
+    assert mentors == []                                      # no lead, and mentors are never added automatically
     warn = db.session.query(Notification).filter_by(type="domain_without_lead").all()
     assert len(warn) == 1 and "no domain lead" in warn[0].message           # goes to the admin
     # creating a shelf project / mentor in that domain warns again
@@ -289,6 +294,9 @@ def test_new_batch_gets_its_domains_mentors_and_admins_are_warned_about_leadless
 
 def test_repair_heals_mentorless_batches_but_never_readds_removed_mentors(app, world):
     from app.services import domain_sync_service
+    from app.services.domain_sync_service import ensure_lead_mentor_profile
+    ensure_lead_mentor_profile(db.session.query(User).filter_by(email="lead@x.com").one(), domain("AIML").id)   # a lead is also a mentor
+    db.session.commit()
     admin = db.session.query(User).filter_by(email="admin@x.com").one()
     ou = db.session.query(OrganisationalUnit).first()
     empty = Batch(code="EMPTY", name="E", ou_id=ou.id, domain_id=domain("AIML").id)
@@ -297,7 +305,7 @@ def test_repair_heals_mentorless_batches_but_never_readds_removed_mentors(app, w
     db.session.commit()
     report = domain_sync_service.repair(admin)
     db.session.commit()
-    assert report["batches_given_mentors"] == [("EMPTY", ["m1@x.com"])]
+    assert report["batches_given_mentors"] == [("EMPTY", ["lead@x.com"])]
     assert domain_sync_service.repair(admin)["batches_given_mentors"] == []                    # idempotent
     # report what needs a human
     assert report["domains_without_lead"] == [] and "free@x.com" in report["mentors_without_domain"]
@@ -316,3 +324,15 @@ def test_repair_reports_leads_without_a_domain(app, world, make_user):
     make_user("domain_lead", "orphan@x.com")
     db.session.commit()
     assert domain_sync_service.repair(None)["leads_without_domain"] == ["orphan@x.com"]
+
+
+def test_new_batch_gets_only_the_domain_lead_as_mentor(client, world):
+    from app.services.domain_sync_service import ensure_lead_mentor_profile
+    ensure_lead_mentor_profile(db.session.query(User).filter_by(email="lead@x.com").one(), domain("AIML").id)   # a lead is also a mentor
+    db.session.commit()
+    ou = db.session.query(OrganisationalUnit).first()
+    b = client.post("/api/batches", headers=world["H"]["admin"], json={"name": "AI batch", "ou_id": ou.id, "domain_id": domain("AIML").id,
+                                                                       "details": {"programme_name": "P"}})
+    assert b.status_code == 201
+    mentors = client.get(f"/api/batches/{b.get_json()['data']['id']}/mentors", headers=world["H"]["admin"]).get_json()["data"]
+    assert [m["email"] for m in mentors] == ["lead@x.com"]          # m1 (an AIML mentor) is not added automatically

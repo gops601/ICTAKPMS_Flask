@@ -32,7 +32,7 @@ def login_required(fn):
 def _lead_acting_as_mentor(user, roles):
     """A domain lead is also a mentor (they have a mentor profile): mentor-only endpoints admit them. What they may do on a
     given project is still decided by the per-project checks (they must be one of the project's mentors)."""
-    if user.role_name != "domain_lead" or "mentor" not in roles:
+    if user.role_name not in ("domain_lead", "admin") or "mentor" not in roles:
         return False
     from app.models import Mentor
     return db.session.query(Mentor.id).filter_by(user_id=user.id).first() is not None

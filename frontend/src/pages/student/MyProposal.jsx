@@ -7,6 +7,7 @@ import StatusBadge from '../../components/StatusBadge'
 import Alert from '../../components/Alert'
 import Spinner from '../../components/Spinner'
 import DataCollectionTable from '../../components/DataCollectionTable'
+import TeamPicker from '../../components/TeamPicker'
 
 const TONE = { pending: 'orange', approved: 'green', rejected: 'red', withdrawn: 'grey' }
 
@@ -25,17 +26,27 @@ export default function MyProposal() {
   const [error, setError] = useState('')
   const [errs, setErrs] = useState({})
   const [done, setDone] = useState(false)
+  const [mode, setMode] = useState('individual')          // individual | group
+  const [mates, setMates] = useState(null)               // { me, max_group_size, students } once Group is chosen
+  const [myRole, setMyRole] = useState('')
+  const [team, setTeam] = useState([])
 
   const load = useCallback(() => proposalService.mine().then(setInfo).catch((e) => setError(errorMessage(e))), [])
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    if (mode === 'group' && mates === null) proposalService.classmates().then(setMates).catch((e) => { setError(errorMessage(e)); setMates({ me: null, max_group_size: 6, students: [] }) })
+  }, [mode, mates])
 
   const submit = async (e) => {
     e.preventDefault()
     if (!file) return setError('Choose the detailed proposal document first.')
     if (datasets.length && !sheet) return setError('Upload the filled data collection sheet (Excel) that describes your datasets.')
+    if (mode === 'group' && team.length === 0) return setError('Select the students who are in your group.')
     setBusy(true); setError(''); setErrs({}); setDone(false)
     try {
-      await proposalService.submit(form.title, form.summary, file, datasets, subdomainId || null, sheet)
+      const members = mates?.me ? [{ student_id: mates.me, role: myRole }, ...team] : team
+      await proposalService.submit(form.title, form.summary, file, datasets, subdomainId || null, sheet, mode, members)
+      setMode('individual'); setMates(null); setTeam([]); setMyRole('')
       setForm({ title: '', summary: '' }); setFile(null); setDatasets([]); setSheet(null); setSubdomainId(''); setDone(true)
       if (sheetRef.current) sheetRef.current.value = ''
       if (fileRef.current) fileRef.current.value = ''
@@ -68,6 +79,31 @@ export default function MyProposal() {
 
       <form onSubmit={submit} className="card space-y-3" aria-label="Upload project proposal">
         <fieldset disabled={locked || busy} className="space-y-3 disabled:opacity-60">
+          <fieldset className="rounded-lg border border-slate-200 p-3">
+            <legend className="label !mb-0 px-1">Project type</legend>
+            <div className="flex flex-wrap gap-5 text-sm">
+              <label className="flex items-center gap-2"><input type="radio" name="pp-mode" checked={mode === 'individual'} onChange={() => setMode('individual')} />Individual project</label>
+              <label className="flex items-center gap-2"><input type="radio" name="pp-mode" checked={mode === 'group'} onChange={() => setMode('group')} />Group project</label>
+            </div>
+            {mode === 'group' && (
+              <div className="mt-3 space-y-3">
+                {mates === null ? <p className="text-sm text-slate-500">Loading your batch mates…</p> : (
+                  <>
+                    <div>
+                      <label htmlFor="pp-myrole" className="label">Your role in the group</label>
+                      <input id="pp-myrole" className="input !w-60" placeholder="Team Lead" maxLength={60} value={myRole} onChange={(e) => setMyRole(e.target.value)} />
+                    </div>
+                    <div>
+                      <div className="label">Select your team mates and give each a role <span className="font-normal text-slate-500">({team.length + 1} of up to {mates.max_group_size} students, including you)</span></div>
+                      <TeamPicker students={mates.students} members={team} onChange={setTeam} max={mates.max_group_size - 1} idPrefix="pp" />
+                      {errs.members && <p className="mt-1 text-xs text-red-600">{Array.isArray(errs.members) ? errs.members.join('; ') : errs.members}</p>}
+                    </div>
+                    <p className="text-xs text-slate-500">Only students without a project of their own are listed. Once submitted, the group can only be changed by your mentor or Domain Lead.</p>
+                  </>
+                )}
+              </div>
+            )}
+          </fieldset>
           <div><label htmlFor="pp-title" className="label">Title *</label>
             <input id="pp-title" className="input" required maxLength={255} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
             {errs.title && <p className="mt-1 text-xs text-red-600">{errs.title}</p>}</div>
@@ -110,7 +146,8 @@ export default function MyProposal() {
           {info.proposals.map((p) => (
             <li key={p.id} className="flex items-start justify-between gap-3 py-3 text-sm">
               <div className="min-w-0">
-                <div className="flex items-center gap-2"><span className="font-medium">{p.title}</span><StatusBadge tone={TONE[p.status]}>{p.status}</StatusBadge></div>
+                <div className="flex items-center gap-2"><span className="font-medium">{p.title}</span><StatusBadge tone={TONE[p.status]}>{p.status}</StatusBadge>{p.is_group && <StatusBadge tone="blue">Group</StatusBadge>}</div>
+                {p.members?.length > 0 && <div className="mt-0.5 text-xs text-slate-600" aria-label="Group members">{p.members.map((m) => `${m.name}${m.role ? ` (${m.role})` : ''}`).join(', ')}</div>}
                 <div className="text-xs text-slate-500">{p.file.name}{p.datasets.length ? ` · ${p.datasets.length} dataset(s)` : ''}{p.subdomain ? ` · ${p.subdomain.name}` : ''} · {new Date(p.submitted_at + 'Z').toLocaleDateString()}</div>
                 {p.data_collection?.length > 0 && <div className="mt-1 text-xs text-slate-600">Data collection: {p.data_collection.map((r) => r.name).join(', ')}</div>}
                 {p.shelf && <div className="mt-1 text-xs font-medium text-green-700">On the Project Shelf as {p.shelf.ps_code}</div>}

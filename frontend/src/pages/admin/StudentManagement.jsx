@@ -11,6 +11,7 @@ import Modal from '../../components/Modal'
 import Alert from '../../components/Alert'
 import { downloadCredentials, rowFromStudent } from '../../utils/credentials'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import { downloadStaffCredentials } from '../../utils/credentials'
 
 function AddStudentModal({ batches, onClose, onSaved }) {
   const [form, setForm] = useState({ name: '', email: '', phone: '', registration_no: '', batch_id: '' })
@@ -50,7 +51,7 @@ function AddStudentModal({ batches, onClose, onSaved }) {
         <div><label htmlFor="s-name" className="label">Name *</label><input id="s-name" className="input" required value={form.name} onChange={set('name')} />{err('name')}</div>
         <div><label htmlFor="s-email" className="label">Email *</label><input id="s-email" type="email" className="input" required value={form.email} onChange={set('email')} />{err('email')}</div>
         <div><label htmlFor="s-phone" className="label">Phone</label><input id="s-phone" className="input" value={form.phone} onChange={set('phone')} /></div>
-        <div><label htmlFor="s-reg" className="label">Registration number</label><input id="s-reg" className="input" placeholder="Leave blank to auto-generate (ICT_STU_…)" value={form.registration_no} onChange={set('registration_no')} /></div>
+        <div><label htmlFor="s-reg" className="label">Registration number</label><input id="s-reg" className="input" placeholder="Leave blank to auto-generate (e.g. ACADEMIC_ONLINE_0001)" value={form.registration_no} onChange={set('registration_no')} /></div>
         <div className="flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
           <button className="btn-primary" disabled={busy}>{busy ? 'Saving…' : 'Create student'}</button>
@@ -129,6 +130,8 @@ export default function StudentManagement() {
   const [deleting, setDeleting] = useState(null)
   const [delBusy, setDelBusy] = useState(false)
   const [delError, setDelError] = useState('')
+  const [resetFor, setResetFor] = useState(null)
+  const [tempPw, setTempPw] = useState(null)
   const dq = useDebounced(q)
 
   useEffect(() => { batchService.list({ per_page: 100, status: 'active' }).then((r) => setBatches(r.items)).catch(() => {}) }, [])
@@ -140,6 +143,12 @@ export default function StudentManagement() {
     setDelBusy(true); setDelError('')
     try { await userService.remove(deleting.user_id); setDeleting(null); reload() }
     catch (e) { setDelError(errorMessage(e)); setDeleting(null) } finally { setDelBusy(false) }
+  }
+
+  const doReset = async () => {
+    setDelBusy(true); setDelError('')
+    try { const r = await userService.resetPassword(resetFor.user_id); setTempPw({ student: resetFor, password: r.temporary_password }) }
+    catch (e) { setDelError(errorMessage(e)) } finally { setDelBusy(false); setResetFor(null) }
   }
 
   return (
@@ -164,10 +173,27 @@ export default function StudentManagement() {
           { key: 'registration_no', header: 'Reg. no', sortKey: 'registration_no' },
           { key: 'batch', header: 'Batch', render: (s) => s.batch.code },
           { key: 'phone', header: 'Phone', render: (s) => s.phone || '—' },
-          { key: 'actions', header: '', render: (s) => <button className="btn-danger" onClick={() => { setDelError(''); setDeleting(s) }} aria-label={`Delete ${s.name}`}><Trash2 className="h-4 w-4" />Delete</button> },
+          { key: 'actions', header: '', render: (s) => (
+            <div className="flex flex-wrap gap-2">
+              <button className="btn-secondary" onClick={() => { setDelError(''); setResetFor(s) }} aria-label={`Reset password for ${s.name}`}><KeyRound className="h-4 w-4" />Reset password</button>
+              <button className="btn-danger" onClick={() => { setDelError(''); setDeleting(s) }} aria-label={`Delete ${s.name}`}><Trash2 className="h-4 w-4" />Delete</button>
+            </div>) },
         ]} />
         <Pagination meta={meta} onPage={setPage} />
       </div>
+      {resetFor && <ConfirmDialog confirmLabel="Reset password" busy={delBusy} onConfirm={doReset} onCancel={() => setResetFor(null)}
+        message={`Reset the password for ${resetFor.name}? A new temporary password will be generated and they must change it at next login.`} />}
+      {tempPw && (
+        <Modal title="Password reset" onClose={() => setTempPw(null)}>
+          <Alert type="warning">Temporary password for {tempPw.student.email} (shown once): <b className="font-mono">{tempPw.password}</b></Alert>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button className="btn-secondary" onClick={() => downloadStaffCredentials([{ name: tempPw.student.name, email: tempPw.student.email, phone: tempPw.student.phone || '', role: 'student', designation: '', company: '', details: `Reg. no ${tempPw.student.registration_no}`, temporary_password: tempPw.password }], `${tempPw.student.email.split('@')[0]}_login_details.csv`)}>
+              <Download className="h-4 w-4" />Download login details
+            </button>
+            <button className="btn-primary" onClick={() => setTempPw(null)}>Done</button>
+          </div>
+        </Modal>
+      )}
       {deleting && <ConfirmDialog danger confirmLabel="Delete permanently" busy={delBusy} onConfirm={doDelete} onCancel={() => setDeleting(null)}
         message={`Permanently delete ${deleting.name} (${deleting.registration_no})? This cannot be undone. Students who already have a project cannot be deleted; deactivate them instead.`} />}
       {credentials && <CredentialsModal batches={batches} onClose={() => setCredentials(false)} />}

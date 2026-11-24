@@ -47,7 +47,9 @@ def run(call, admin_email, admin_password, tag="x"):
     ok(7, call("POST", "/api/admin/users", admin, {"role": "mentor", "name": "Flow Mentor", "email": f"mentor.{tag}@flow.test", "password": pw, "domain_id": dom["id"]}))
     mentors = ok(7, call("GET", "/api/mentors", lead_t))
     mentor = next(m for m in mentors if m["email"] == f"mentor.{tag}@flow.test")
-    # the mentor was created under the batch's domain, so they are on the batch automatically (no manual step)
+    # mentors are never added automatically: the lead adds this one to the batch explicitly
+    assert mentor["id"] not in {m["id"] for m in ok(7, call("GET", f"/api/batches/{batch['id']}/mentors", lead_t))}
+    ok(7, call("POST", f"/api/batches/{batch['id']}/mentors/bulk", lead_t, {"mentor_ids": [mentor["id"]]}))
     assert mentor["id"] in {m["id"] for m in ok(7, call("GET", f"/api/batches/{batch['id']}/mentors", lead_t))}
     stu = ok(7, call("POST", "/api/students", admin, {"name": "Flow Student", "email": f"stu.{tag}@flow.test", "registration_no": f"R-{tag}", "batch_id": batch["id"]}))
     # 8. Domain Lead allocates the project to the student

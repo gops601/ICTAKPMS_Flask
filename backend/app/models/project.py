@@ -1,16 +1,21 @@
 from app.extensions import db
 from .base import TimestampMixin
 
+# Projects of the Academic OU come in different kinds; other OUs have no project type.
+ACADEMIC_OU_CODE = "ACADEMIC"
+PROJECT_TYPES = {"addon_course": "Add-on Course", "summer_internship": "Summer Internship", "other": "Other"}
+
 
 class Project(TimestampMixin, db.Model):
     __tablename__ = "projects"
     id = db.Column(db.Integer, primary_key=True)
-    code = db.Column(db.String(30), unique=True)  # system-generated, ICT_PRJ_XXXXXX
+    code = db.Column(db.String(60), unique=True)  # system-generated: <OU>_<MODE>_NNNN, e.g. ACADEMIC_ONLINE_0001
     batch_id = db.Column(db.Integer, db.ForeignKey("batches.id", ondelete="RESTRICT"), nullable=False, index=True)
     problem_statement_id = db.Column(db.Integer, db.ForeignKey("problem_statements.id", ondelete="RESTRICT"),
                                      nullable=False, index=True)
     mentor_id = db.Column(db.Integer, db.ForeignKey("mentors.id", ondelete="SET NULL"), index=True)  # optional override
     title = db.Column(db.String(255))
+    project_type = db.Column(db.String(30), index=True)  # addon_course | summer_internship | other (Academic OU only)
     stage = db.Column(db.String(30), default="allocated", nullable=False, index=True)
     start_date = db.Column(db.Date)
     target_end_date = db.Column(db.Date)
@@ -35,6 +40,7 @@ class ProjectStudent(TimestampMixin, db.Model):
     project_id = db.Column(db.Integer, db.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
     student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     is_lead = db.Column(db.Boolean, default=False, nullable=False)
+    role = db.Column(db.String(60))  # what this student does in the team, e.g. Team Lead, Backend, Tester
 
     project = db.relationship("Project", back_populates="members")
     student = db.relationship("Student")

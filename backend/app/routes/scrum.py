@@ -1,4 +1,6 @@
-from flask import request
+import io
+
+from flask import request, send_file
 from flask_smorest import Blueprint
 from marshmallow import EXCLUDE, Schema, fields, validate
 
@@ -8,7 +10,7 @@ from app.permissions import current_user, login_required, roles_required
 from app.permissions.scope import ensure_project_access, scoped_projects
 from app.services import scrum_service as svc
 from app.utils.audit import audit
-from app.utils.errors import NotFound
+from app.utils.errors import AppError, NotFound
 from app.utils.responses import ok
 
 bp = Blueprint("scrum", __name__, url_prefix="/api/scrum", description="Scrum boards and tasks")
@@ -79,6 +81,36 @@ def create_task(data, project_id):
     task = svc.create_task(project, data, user)
     db.session.commit()
     return ok(svc.task_detail(task), "Task created", 201)
+
+
+@bp.get("/projects/<int:project_id>/tasks/template")
+@bp.doc(security=SEC, description="Fill-in template (xlsx or csv) for the weekly bulk task upload.")
+@login_required
+def tasks_template(project_id):
+    project = ensure_project_access(current_user(), project_id)
+    fmt = request.args.get("format", "xlsx")
+    if fmt not in ("xlsx", "csv"):
+        raise AppError("format must be xlsx or csv", 422)
+    content, mime = svc.bulk_template(project, fmt)
+    return send_file(io.BytesIO(content), mimetype=mime, as_attachment=True, download_name=f"scrum_tasks_template.{fmt}")
+
+
+@bp.post("/projects/<int:project_id>/tasks/bulk")
+@bp.doc(security=SEC, description="Upload the filled weekly template (multipart field 'file'). All rows are checked first; "
+                                  "if any row is invalid nothing is created and the errors are returned.")
+@login_required
+def bulk_tasks(project_id):
+    user = current_user()
+    project = ensure_project_access(user, project_id)
+    upload = request.files.get("file")
+    if upload is None or not upload.filename:
+        raise AppError("Choose a file to upload", 422)
+    result = svc.bulk_create_tasks(project, upload.filename, upload.read(), user)
+    if result["created"]:
+        audit(user.id, "task.bulk_create", "project", project.id, {"count": result["created"]})
+    db.session.commit()
+    return ok({**result, "board": svc.board_view(project, user)},
+              f"{result['created']} task(s) added" if result["created"] else "No tasks were added: fix the rows listed and upload again")
 
 
 @bp.get("/tasks/<int:task_id>")

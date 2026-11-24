@@ -1,6 +1,7 @@
 from marshmallow import EXCLUDE, Schema, fields, validate
 
 from app.extensions import db
+from app.models.project import PROJECT_TYPES
 from app.models import ProjectGithubRepository, ProjectLifecycleTransition, ProjectActivityLog, User
 from app.services import lifecycle, project_service, srs_service
 from app.services.metrics_service import phase_for, project_weeks
@@ -22,6 +23,11 @@ class AllocationSchema(_Base):
     items = fields.List(fields.Nested(AllocationItemSchema), required=True, validate=validate.Length(min=1))
     mentor_id = fields.Integer(allow_none=True, load_default=None)
     start_date = fields.String(allow_none=True, load_default=None)
+    project_type = fields.String(allow_none=True, load_default=None)  # required for Academic OU batches
+
+
+class TransferMentorSchema(_Base):
+    to_mentor_id = fields.Integer(allow_none=True, required=True)   # null = just remove the mentor
 
 
 class TransitionSchema(_Base):
@@ -56,6 +62,21 @@ class BatchMentorSchema(_Base):
     mentor_id = fields.Integer(required=True)
 
 
+class ProjectMemberSchema(_Base):
+    student_id = fields.Integer(required=True)
+    role = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=60))
+    is_lead = fields.Boolean(load_default=None, allow_none=True)
+
+
+class ProjectMembersSchema(_Base):
+    members = fields.List(fields.Nested(ProjectMemberSchema), required=True, validate=validate.Length(min=1, max=12))
+    reason = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=300))
+
+
+class BatchMentorsSchema(_Base):
+    mentor_ids = fields.List(fields.Integer(), required=True, validate=validate.Length(min=1, max=100))
+
+
 class ReassignMentorSchema(_Base):
     to_mentor_id = fields.Integer(required=True)
 
@@ -76,6 +97,17 @@ def _lead_mentors(project, role):
         return False
 
 
+def _viewer_is_student(role=None):
+    """True when the payload is for a student (explicit role, else the signed-in user). Unknown viewer: treated as a student."""
+    if role:
+        return role == "student"
+    try:
+        from app.permissions import current_user
+        return current_user().role_name == "student"
+    except Exception:
+        return True
+
+
 def project_to_dict(p, detail=False, role=None):
     mentors = project_service.mentors_for_project(p)
     reasons = project_service.delay_reasons(p)
@@ -88,8 +120,12 @@ def project_to_dict(p, detail=False, role=None):
         "problem_statement": {"id": p.problem_statement.id, "ps_code": p.problem_statement.ps_code,
                               "title": p.problem_statement.title, "difficulty": p.problem_statement.difficulty},
         "members": [{"student_id": m.student.id, "name": m.student.user.name, "email": m.student.user.email,
-                     "registration_no": m.student.registration_no, "is_lead": m.is_lead} for m in p.members],
-        "mentors": [{"id": m.id, "name": m.user.name} for m in mentors],
+                     "registration_no": m.student.registration_no, "is_lead": m.is_lead, "role": m.role} for m in p.members],
+        "project_type": p.project_type, "project_type_label": PROJECT_TYPES.get(p.project_type),
+        # students see only the mentors' names; email, phone and designation go to staff only
+        "mentors": [{"id": m.id, "name": m.user.name,
+                     **({} if _viewer_is_student(role) else {"designation": m.designation, "email": m.user.email, "phone": m.user.phone})}
+                    for m in mentors],
         "mentor_override": p.mentor_id is not None,
         "start_date": _iso(p.start_date), "target_end_date": _iso(p.target_end_date),
         "progress": project_service.compute_progress(p), "is_delayed": bool(reasons), "delay_reasons": reasons,

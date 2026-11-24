@@ -7,8 +7,8 @@ from app.models import Batch, BatchMentor, Mentor, Student, User
 from app.permissions import current_user, roles_required
 from app.permissions.scope import ensure_batch_access, scoped_batches
 from app.schemas.org import BatchSchema, BatchUpdateSchema, ProjectDatesSchema, StatusSchema, batch_to_dict, mentor_to_dict
-from app.schemas.project import BatchMentorSchema, ReassignMentorSchema
-from app.services import org_service, project_service
+from app.schemas.project import BatchMentorSchema, BatchMentorsSchema, ReassignMentorSchema
+from app.services import org_service, project_service, user_service
 from app.utils.audit import audit
 from app.utils.errors import AppError, NotFound
 from app.utils.responses import ok
@@ -70,12 +70,19 @@ def list_batches():
 @bp.arguments(BatchSchema)
 @roles_required("admin")
 def create_batch(data):
+    students = data.pop("students", None) or []
+    user_service.validate_new_students(students)          # all-or-nothing: nothing is created if any row is invalid
     batch = org_service.create_batch(data)
-    audit(current_user().id, "batch.create", "batch", batch.id, {"code": batch.code})
+    credentials = []
+    for s in students:
+        student, pw = user_service.create_student(batch, s["name"], s["email"], s.get("phone"), s.get("registration_no"))
+        credentials.append(user_service.credential_row(student, pw))
+    audit(current_user().id, "batch.create", "batch", batch.id, {"code": batch.code, "students": len(credentials)})
     _notify_leads(batch)
     _sync_domain(batch)
     db.session.commit()
-    return ok(batch_to_dict(batch, 0), "Batch created", 201)
+    return ok({**batch_to_dict(batch, len(credentials)), "credentials": credentials},
+              f"Batch created with {len(credentials)} student(s)" if credentials else "Batch created", 201)
 
 
 @bp.get("/<int:batch_id>")
@@ -177,6 +184,25 @@ def assign_mentor(data, batch_id):
     audit(user.id, "batch.mentor_assign", "batch", batch.id, data)
     db.session.commit()
     return ok(_batch_mentors(batch), "Mentor assigned", 201)
+
+
+@bp.post("/<int:batch_id>/mentors/bulk")
+@bp.doc(security=SEC, description="Add several mentors to the batch in one go (all or nothing). Mentors already on the batch are skipped.")
+@bp.arguments(BatchMentorsSchema)
+@roles_required(*MANAGERS)
+def assign_mentors(data, batch_id):
+    user = current_user()
+    batch = ensure_batch_access(user, batch_id)
+    on_batch = {l.mentor_id for l in db.session.query(BatchMentor).filter_by(batch_id=batch.id, is_active=True)}
+    added = []
+    for mid in dict.fromkeys(data["mentor_ids"]):
+        if mid in on_batch:
+            continue
+        project_service.assign_batch_mentor(batch, _mentor_or_404(mid), user)
+        added.append(mid)
+    audit(user.id, "batch.mentor_assign_bulk", "batch", batch.id, {"assigned": added})
+    db.session.commit()
+    return ok(_batch_mentors(batch), f"{len(added)} mentor(s) added", 201)
 
 
 @bp.post("/<int:batch_id>/mentors/assign-domain")

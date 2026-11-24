@@ -4,7 +4,7 @@ import { Bar, BarChart, CartesianGrid, Cell, Legend, LabelList, Pie, PieChart, R
 
 /** Validated reference palette (categorical slots 1-3 pass the all-pairs gate; status colours are reserved for state). */
 export const COLORS = {
-  series: ['#9f1239', '#d97706', '#57534e'],
+  series: ['#07546a', '#d97706', '#57534e'],
   good: '#0ca30c', critical: '#d03b3b', neutral: '#898781',
   grid: '#e1e0d9', axis: '#c3c2b7', ink: '#0b0b0b', inkSecondary: '#52514e', muted: '#898781',
 }

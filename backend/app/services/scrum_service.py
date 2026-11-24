@@ -280,6 +280,145 @@ def add_comment(task, project, body, user):
     return comment
 
 
+# ------------------------------------------------------------ weekly bulk upload
+MAX_BULK_TASKS = 200
+BULK_COLUMNS = [  # (key, header, required, note)
+    ("title", "Task Title", True, "Short name of the task (max 255 characters)"),
+    ("description", "Description", False, "What needs to be done"),
+    ("week", "Week", False, "Week number of the project plan (1-4 online, 1-3 offline). Used for the dates when Start/Due Date are blank"),
+    ("priority", "Priority", False, "low, medium, high or critical (default medium)"),
+    ("status", "Status", False, "backlog, todo, in_progress, in_review or completed (default todo)"),
+    ("assignees", "Assigned To", False, "Email or registration number of project member(s); separate several with commas"),
+    ("start_date", "Start Date", False, "YYYY-MM-DD"),
+    ("due_date", "Due Date", False, "YYYY-MM-DD"),
+]
+
+
+def _norm_header(text):
+    return "".join(ch for ch in str(text).lower() if ch.isalnum())
+
+
+def bulk_template(project, fmt):
+    """Fill-in template for the weekly task upload: Tasks sheet, an example row, and an Instructions sheet with the team."""
+    import io
+    from openpyxl import Workbook
+    from app.services.metrics_service import project_weeks
+    headers = [c[1] for c in BULK_COLUMNS]
+    first = project.members[0].student if project.members else None
+    example = ["Design the login screen", "Wireframes and UI for login", 1, "medium", "todo",
+               first.user.email if first else "student@example.com", "", ""]
+    if fmt == "csv":
+        import csv
+        out = io.StringIO()
+        w = csv.writer(out)
+        w.writerow(headers)
+        w.writerow(example)
+        return out.getvalue().encode("utf-8-sig"), "text/csv"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Tasks"
+    ws.append(headers)
+    ws.append(example)
+    for i, h in enumerate(headers, 1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = max(16, len(h) + 4)
+    guide = wb.create_sheet("Instructions")
+    guide.append(["Column", "Required", "Notes"])
+    for _, header, required, note in BULK_COLUMNS:
+        guide.append([header, "Yes" if required else "No", note])
+    guide.append([])
+    guide.append([f"This project has {project_weeks(project)} weeks. Delete the example row before uploading. Up to {MAX_BULK_TASKS} tasks per file."])
+    guide.append([])
+    guide.append(["Team member", "Email", "Registration no."])
+    for m in project.members:
+        guide.append([m.student.user.name, m.student.user.email, m.student.registration_no])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _enum(raw, allowed, default, label):
+    value = _norm_header(raw) if raw not in (None, "") else ""
+    value = {"inprogress": "in_progress", "inreview": "in_review", "todo": "todo"}.get(value, value)
+    if not value:
+        return default, None
+    if value not in allowed:
+        return None, f"{label} must be one of: {', '.join(allowed)}"
+    return value, None
+
+
+def bulk_create_tasks(project, filename, content, user):
+    """Create many tasks from an uploaded CSV/XLSX (see bulk_template). All-or-nothing: any bad row creates nothing.
+
+    Returns {"created": n, "errors": [{"row": n, "message": ...}]}; rows are numbered as in the sheet (header = row 1).
+    """
+    from datetime import timedelta
+    from app.services.import_service import read_upload
+    from app.services.metrics_service import project_weeks
+    _require(board_permissions(user, project), "can_create", user)
+    df = read_upload(filename, content)
+    headers = {_norm_header(h): h for h in df.columns}
+    cols = {key: next((headers[a] for a in (_norm_header(header), _norm_header(key)) if a in headers), None)
+            for key, header, _, _ in BULK_COLUMNS}
+    if cols["title"] is None:
+        raise AppError("The file has no 'Task Title' column. Download the template and fill that in.", 422)
+    if len(df) > MAX_BULK_TASKS:
+        raise AppError(f"Too many tasks (max {MAX_BULK_TASKS} per file)", 422)
+
+    members = {}
+    for m in project.members:
+        s = m.student
+        members[s.user.email.lower()] = s.id
+        members[(s.registration_no or "").lower()] = s.id
+    weeks = project_weeks(project)
+    rows, errors = [], []
+    for idx, rec in enumerate(df.to_dict("records"), start=2):
+        get = lambda k: str(rec.get(cols[k], "") if cols[k] else "").strip()   # noqa: E731
+        if not any(str(v).strip() for v in rec.values()):
+            continue                                                         # blank line
+        problems = []
+        data = {"title": get("title"), "description": get("description")}
+        data["priority"], err = _enum(get("priority"), TASK_PRIORITIES, "medium", "Priority")
+        problems += [err] if err else []
+        data["status"], err = _enum(get("status"), TASK_STATUSES, "todo", "Status")
+        problems += [err] if err else []
+        ids = []
+        for token in [t.strip() for t in get("assignees").replace(";", ",").split(",") if t.strip()]:
+            sid = members.get(token.lower())
+            if sid is None:
+                problems.append(f"'{token}' is not a member of this project")
+            elif sid not in ids:
+                ids.append(sid)
+        data["assigned_student_ids"] = ids
+        week = None
+        if get("week"):
+            try:
+                week = int(float(get("week")))
+                if not 1 <= week <= weeks:
+                    raise ValueError
+            except ValueError:
+                problems.append(f"Week must be a number from 1 to {weeks}")
+        start, due = get("start_date"), get("due_date")
+        if week and project.start_date and not start and not due:
+            first_day = project.start_date + timedelta(weeks=week - 1)
+            start, due = first_day.isoformat(), (first_day + timedelta(days=6)).isoformat()
+        data["start_date"], data["due_date"] = start or None, due or None
+        try:
+            _clean(data)
+        except AppError as exc:
+            problems += [str(v) for v in (exc.errors or {}).values()] or [exc.message]
+        if problems:
+            errors.append({"row": idx, "message": "; ".join(problems)})
+        else:
+            rows.append(data)
+    if not rows and not errors:
+        raise AppError("The file has no tasks in it", 422)
+    if errors:
+        return {"created": 0, "errors": errors}
+    created = [create_task(project, d, user) for d in rows]
+    lifecycle.log_activity(project.id, user.id, "task.bulk_created", {"count": len(created)})
+    return {"created": len(created), "errors": []}
+
+
 # ------------------------------------------------------------ serialisation
 def task_to_dict(task, comment_count=None):
     from app.models import User
@@ -338,7 +477,7 @@ def board_view(project, user, include_archived=False):
         "project": {"id": project.id, "title": project.title, "stage": project.stage,
                     "mentor_can_edit_board": project.mentor_can_edit_board},
         "permissions": perms,
-        "members": [{"student_id": m.student_id, "name": m.student.user.name} for m in project.members],
+        "members": [{"student_id": m.student_id, "name": m.student.user.name, "role": m.role, "is_lead": m.is_lead} for m in project.members],
         "columns": [{"status": s, "label": COLUMN_LABELS[s],
                      "tasks": [task_to_dict(t, counts.get(t.id, 0)) for t in tasks if t.status == s]} for s in TASK_STATUSES],
         "stats": stats_for(tasks),

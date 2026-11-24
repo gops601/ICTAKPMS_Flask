@@ -60,15 +60,24 @@ class DomainLeadsSchema(_Base):
     user_ids = fields.List(fields.Integer(), required=True)
 
 
+class BatchStudentSchema(_Base):
+    name = fields.String(required=True, validate=validate.Length(min=2, max=150))
+    email = fields.String(required=True, validate=validate.Length(max=255))
+    phone = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=30))
+    registration_no = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=60))
+
+
 class BatchSchema(_Base):
-    code = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=50))  # blank = generated ICT_BATCH_ id
+    code = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=50))  # blank = generated <OU>_<MODE>_NNNN id
     name = fields.String(required=True, validate=validate.Length(min=1, max=150))
     ou_id = fields.Integer(required=True)
     domain_id = fields.Integer(required=True)
+    subdomain_id = fields.Integer(load_default=None, allow_none=True)
     mode = fields.String(load_default="online", validate=validate.OneOf(["online", "offline"]))   # online = 4 weeks, offline = 3 weeks
     start_date = fields.String(allow_none=True)
     end_date = fields.String(allow_none=True)
     details = fields.Dict(keys=fields.String(), values=fields.Raw(allow_none=True), load_default=dict)
+    students = fields.List(fields.Nested(BatchStudentSchema), load_default=list)   # optional: enrol students in the same step
 
 
 class BatchUpdateSchema(_Base):
@@ -76,6 +85,7 @@ class BatchUpdateSchema(_Base):
     name = fields.String(validate=validate.Length(min=1, max=150))
     ou_id = fields.Integer()
     domain_id = fields.Integer()
+    subdomain_id = fields.Integer(allow_none=True)
     mode = fields.String(validate=validate.OneOf(["online", "offline"]))
     start_date = fields.String(allow_none=True)
     end_date = fields.String(allow_none=True)
@@ -99,7 +109,7 @@ class StudentCreateSchema(_Base):
     name = fields.String(required=True, validate=validate.Length(min=2, max=150))
     email = fields.Email(required=True)
     phone = fields.String(load_default=None, validate=validate.Length(max=30))
-    registration_no = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=60))  # blank = generated ICT_STU_ id
+    registration_no = fields.String(load_default=None, allow_none=True, validate=validate.Length(max=60))  # blank = generated <OU>_<MODE>_NNNN id
     batch_id = fields.Integer(required=True)
     extra_fields = fields.Dict(load_default=dict)
 
@@ -116,6 +126,7 @@ class StaffCreateSchema(_Base):
     phone = fields.String(load_default=None, validate=validate.Length(max=30))
     password = fields.String(load_default=None, validate=validate.Length(max=128))
     domain_id = fields.Integer(load_default=None)
+    also_mentor = fields.Boolean(load_default=False)  # admins only: also create a mentor profile
     domain_ids = fields.List(fields.Integer(), load_default=None)  # domain leads: the domain(s) they lead (required)
     designation = fields.String(load_default=None, validate=validate.Length(max=120))
     expertise = fields.String(load_default=None, validate=validate.Length(max=255))
@@ -173,7 +184,8 @@ def domain_to_dict(d, counts=None):
 
 def batch_to_dict(b, student_count=None, details=True):
     out = {"id": b.id, "code": b.code, "name": b.name, "status": b.status, "mode": b.mode, "total_weeks": 3 if b.mode == "offline" else 4,
-           "ou": {"id": b.ou.id, "name": b.ou.name}, "domain": {"id": b.domain.id, "name": b.domain.name} if b.domain else None,
+           "ou": {"id": b.ou.id, "name": b.ou.name, "code": b.ou.code}, "domain": {"id": b.domain.id, "name": b.domain.name} if b.domain else None,
+           "subdomain": {"id": b.subdomain.id, "name": b.subdomain.name} if b.subdomain else None,
            "start_date": _iso(b.start_date), "end_date": _iso(b.end_date),
            "project_start_date": _iso(b.project_start_date), "project_end_date": _iso(b.project_end_date)}
     if student_count is not None:

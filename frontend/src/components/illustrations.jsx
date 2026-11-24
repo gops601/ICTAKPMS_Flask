@@ -16,8 +16,8 @@ export function HeroIllustration({ className = '' }) {
   return (
     <svg viewBox="0 0 520 400" className={className} role="img" aria-label="Illustration of a project dashboard with charts, a Scrum board and completed milestones">
       <defs>
-        <linearGradient id="hi-blob" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fb7185" stopOpacity=".55" /><stop offset="1" stopColor="#fbbf24" stopOpacity=".35" /></linearGradient>
-        <linearGradient id="hi-bar1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fb7185" /><stop offset="1" stopColor="#be123c" /></linearGradient>
+        <linearGradient id="hi-blob" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#3fa6c0" stopOpacity=".55" /><stop offset="1" stopColor="#fbbf24" stopOpacity=".35" /></linearGradient>
+        <linearGradient id="hi-bar1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#3fa6c0" /><stop offset="1" stopColor="#066782" /></linearGradient>
         <linearGradient id="hi-bar2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fcd34d" /><stop offset="1" stopColor="#d97706" /></linearGradient>
         <filter id="hi-shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="14" stdDeviation="14" floodColor="#1a050a" floodOpacity=".28" /></filter>
       </defs>
@@ -28,39 +28,39 @@ export function HeroIllustration({ className = '' }) {
       {/* main window */}
       <g filter="url(#hi-shadow)">
         <rect x="70" y="62" width="330" height="236" rx="20" fill="#fff" />
-        <path d="M70 82a20 20 0 0 1 20-20h290a20 20 0 0 1 20 20v14H70z" fill="#fff1f2" />
-        <circle cx="92" cy="79" r="5" fill="#fb7185" /><circle cx="110" cy="79" r="5" fill="#fbbf24" /><circle cx="128" cy="79" r="5" fill="#fb7185" />
-        <rect x="150" y="73" width="120" height="12" rx="6" fill="#ffe4e6" />
+        <path d="M70 82a20 20 0 0 1 20-20h290a20 20 0 0 1 20 20v14H70z" fill="#eaf6f9" />
+        <circle cx="92" cy="79" r="5" fill="#3fa6c0" /><circle cx="110" cy="79" r="5" fill="#fbbf24" /><circle cx="128" cy="79" r="5" fill="#3fa6c0" />
+        <rect x="150" y="73" width="120" height="12" rx="6" fill="#d6eef4" />
         {/* side nav */}
-        <rect x="84" y="108" width="56" height="176" rx="12" fill="#4f1524" />
+        <rect x="84" y="108" width="56" height="176" rx="12" fill="#0a4254" />
         {[124, 150, 176, 202].map((y, i) => <rect key={y} x="94" y={y} width="36" height="10" rx="5" fill="#fff" opacity={i === 0 ? 0.95 : 0.35} />)}
         {/* stat tiles */}
-        {[[154, '#ffe4e6', '#be123c'], [231, '#fef3c7', '#d97706'], [308, '#fef3c7', '#d97706']].map(([x, bg, fg]) => (
+        {[[154, '#d6eef4', '#066782'], [231, '#fef3c7', '#d97706'], [308, '#fef3c7', '#d97706']].map(([x, bg, fg]) => (
           <g key={x}><rect x={x} y="108" width="68" height="42" rx="10" fill={bg} /><rect x={x + 10} y="118" width="26" height="6" rx="3" fill={fg} opacity=".55" /><rect x={x + 10} y="130" width="40" height="10" rx="4" fill={fg} /></g>
         ))}
         {/* bar chart */}
-        <rect x="154" y="162" width="146" height="118" rx="12" fill="#fff7f8" />
+        <rect x="154" y="162" width="146" height="118" rx="12" fill="#f3fafc" />
         {[[168, 40, 'hi-bar1'], [190, 62, 'hi-bar2'], [212, 48, 'hi-bar1'], [234, 78, 'hi-bar2'], [256, 58, 'hi-bar1'], [278, 88, 'hi-bar2']].map(([x, h, g]) => (
           <rect key={x} x={x} y={268 - h} width="14" height={h} rx="5" fill={`url(#${g})`} />
         ))}
         {/* progress ring */}
-        <rect x="310" y="162" width="76" height="118" rx="12" fill="#fff7f8" />
-        <circle cx="348" cy="208" r="22" fill="none" stroke="#ffe4e6" strokeWidth="8" />
+        <rect x="310" y="162" width="76" height="118" rx="12" fill="#f3fafc" />
+        <circle cx="348" cy="208" r="22" fill="none" stroke="#d6eef4" strokeWidth="8" />
         <circle cx="348" cy="208" r="22" fill="none" stroke="#d97706" strokeWidth="8" strokeLinecap="round" strokeDasharray="104 138" transform="rotate(-90 348 208)" />
-        <rect x="334" y="204" width="28" height="8" rx="4" fill="#4f1524" opacity=".8" />
-        <rect x="322" y="246" width="52" height="6" rx="3" fill="#fecdd3" /><rect x="328" y="258" width="40" height="6" rx="3" fill="#fecdd3" />
+        <rect x="334" y="204" width="28" height="8" rx="4" fill="#0a4254" opacity=".8" />
+        <rect x="322" y="246" width="52" height="6" rx="3" fill="#aedde8" /><rect x="328" y="258" width="40" height="6" rx="3" fill="#aedde8" />
       </g>
 
       {/* scrum card */}
       <g filter="url(#hi-shadow)">
         <rect x="330" y="236" width="150" height="112" rx="16" fill="#fff" />
         <rect x="344" y="250" width="40" height="8" rx="4" fill="#94a3b8" />
-        {[[344, '#ffe4e6', '#be123c'], [392, '#fef3c7', '#d97706'], [440, '#fef3c7', '#d97706']].map(([x, bg, fg], c) => (
+        {[[344, '#d6eef4', '#066782'], [392, '#fef3c7', '#d97706'], [440, '#fef3c7', '#d97706']].map(([x, bg, fg], c) => (
           <g key={x}>
             <rect x={x} y="266" width="34" height="68" rx="8" fill="#f1f5f9" />
             <rect x={x + 4} y="272" width="26" height="14" rx="4" fill={bg} /><rect x={x + 7} y="277" width="14" height="4" rx="2" fill={fg} />
             {c < 2 && <><rect x={x + 4} y="290" width="26" height="14" rx="4" fill={bg} /><rect x={x + 7} y="295" width="10" height="4" rx="2" fill={fg} /></>}
-            {c === 0 && <rect x={x + 4} y="308" width="26" height="14" rx="4" fill="#ffe4e6" />}
+            {c === 0 && <rect x={x + 4} y="308" width="26" height="14" rx="4" fill="#d6eef4" />}
           </g>
         ))}
       </g>
@@ -72,8 +72,8 @@ export function HeroIllustration({ className = '' }) {
       </g>
 
       {/* success badge */}
-      <g filter="url(#hi-shadow)"><circle cx="72" cy="300" r="26" fill="#e11d48" /><path d="m59 300 9 9 17-18" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" /></g>
-      <g filter="url(#hi-shadow)"><rect x="84" y="318" width="96" height="30" rx="15" fill="#fff" /><circle cx="102" cy="333" r="6" fill="#be123c" /><rect x="114" y="327" width="52" height="5" rx="2.5" fill="#fecdd3" /><rect x="114" y="335" width="34" height="5" rx="2.5" fill="#ffe4e6" /></g>
+      <g filter="url(#hi-shadow)"><circle cx="72" cy="300" r="26" fill="#0a819f" /><path d="m59 300 9 9 17-18" fill="none" stroke="#fff" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" /></g>
+      <g filter="url(#hi-shadow)"><rect x="84" y="318" width="96" height="30" rx="15" fill="#fff" /><circle cx="102" cy="333" r="6" fill="#066782" /><rect x="114" y="327" width="52" height="5" rx="2.5" fill="#aedde8" /><rect x="114" y="335" width="34" height="5" rx="2.5" fill="#d6eef4" /></g>
     </svg>
   )
 }
@@ -82,12 +82,12 @@ export function HeroIllustration({ className = '' }) {
 export function EmptyIllustration({ className = '', size = 112 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 120 120" className={className} role="img" aria-label="Nothing here yet">
-      <defs><linearGradient id="ei-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fecdd3" /><stop offset="1" stopColor="#fde68a" /></linearGradient></defs>
+      <defs><linearGradient id="ei-g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#aedde8" /><stop offset="1" stopColor="#8fd0e0" /></linearGradient></defs>
       <circle cx="60" cy="62" r="46" fill="url(#ei-g)" opacity=".55" />
-      <rect x="34" y="26" width="52" height="68" rx="9" fill="#fff" stroke="#fecdd3" strokeWidth="2.5" />
-      <rect x="47" y="19" width="26" height="14" rx="6" fill="#e11d48" />
-      {[48, 60, 72].map((y) => <g key={y}><circle cx="45" cy={y} r="3.2" fill="#d97706" /><rect x="53" y={y - 2.5} width="25" height="5" rx="2.5" fill="#ffe4e6" /></g>)}
-      <circle cx="92" cy="86" r="12" fill="#e11d48" /><path d="m86 86 4 4 8-8.5" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="34" y="26" width="52" height="68" rx="9" fill="#fff" stroke="#aedde8" strokeWidth="2.5" />
+      <rect x="47" y="19" width="26" height="14" rx="6" fill="#0a819f" />
+      {[48, 60, 72].map((y) => <g key={y}><circle cx="45" cy={y} r="3.2" fill="#d97706" /><rect x="53" y={y - 2.5} width="25" height="5" rx="2.5" fill="#d6eef4" /></g>)}
+      <circle cx="92" cy="86" r="12" fill="#0a819f" /><path d="m86 86 4 4 8-8.5" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -98,9 +98,9 @@ export function BannerArt({ className = '' }) {
   const edges = [[0, 3], [0, 4], [1, 4], [1, 5], [2, 5], [2, 4], [3, 6], [4, 6], [4, 7], [5, 7], [6, 8], [7, 8]]
   return (
     <svg viewBox="0 0 260 120" className={className} aria-hidden="true">
-      <circle cx="210" cy="26" r="38" fill="#e11d48" opacity=".10" />
-      {edges.map(([a, b], i) => <line key={i} x1={pts[a][0]} y1={pts[a][1]} x2={pts[b][0]} y2={pts[b][1]} stroke="#e11d48" strokeOpacity=".35" strokeWidth="1.2" className="ai-link" />)}
-      {pts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={i === 8 ? 8 : 4.5} fill={i === 8 ? '#f59e0b' : '#fb7185'} opacity={i === 8 ? 1 : 0.8} className="ai-node" style={{ animationDelay: `${i * 0.3}s` }} />)}
+      <circle cx="210" cy="26" r="38" fill="#0a819f" opacity=".10" />
+      {edges.map(([a, b], i) => <line key={i} x1={pts[a][0]} y1={pts[a][1]} x2={pts[b][0]} y2={pts[b][1]} stroke="#0a819f" strokeOpacity=".35" strokeWidth="1.2" className="ai-link" />)}
+      {pts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={i === 8 ? 8 : 4.5} fill={i === 8 ? '#f59e0b' : '#3fa6c0'} opacity={i === 8 ? 1 : 0.8} className="ai-node" style={{ animationDelay: `${i * 0.3}s` }} />)}
       <path d="M232 30l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#f59e0b" />
     </svg>
   )
@@ -136,39 +136,39 @@ export function AiNetworkHero({ className = '' }) {
   return (
     <svg viewBox="0 0 520 400" className={className} role="img" aria-label="Illustration of an AI neural network connected to a central AI core with project insights">
       <defs>
-        <radialGradient id="an-glow" cx="50%" cy="50%" r="50%"><stop offset="0" stopColor="#fb7185" stopOpacity=".55" /><stop offset="1" stopColor="#fb7185" stopOpacity="0" /></radialGradient>
-        <linearGradient id="an-core" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#e11d48" /><stop offset="1" stopColor="#d97706" /></linearGradient>
+        <radialGradient id="an-glow" cx="50%" cy="50%" r="50%"><stop offset="0" stopColor="#3fa6c0" stopOpacity=".55" /><stop offset="1" stopColor="#3fa6c0" stopOpacity="0" /></radialGradient>
+        <linearGradient id="an-core" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#0a819f" /><stop offset="1" stopColor="#d97706" /></linearGradient>
         <filter id="an-shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="12" stdDeviation="12" floodColor="#1a050a" floodOpacity=".35" /></filter>
       </defs>
       <circle cx="345" cy="200" r="150" fill="url(#an-glow)" />
-      {links.map(([a, b], i) => <line key={i} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="#fda4af" strokeOpacity=".4" strokeWidth="1.2" className="ai-link" style={{ animationDelay: `${(i % 7) * 0.3}s` }} />)}
+      {links.map(([a, b], i) => <line key={i} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} stroke="#7cc6d8" strokeOpacity=".4" strokeWidth="1.2" className="ai-link" style={{ animationDelay: `${(i % 7) * 0.3}s` }} />)}
       {nodes.map(([x, y], i) => (
         <g key={i} className="ai-node" style={{ animationDelay: `${(i % 6) * 0.45}s` }}>
-          <circle cx={x} cy={y} r="11" fill="#fb7185" opacity=".18" /><circle cx={x} cy={y} r="5.5" fill="#fecdd3" />
+          <circle cx={x} cy={y} r="11" fill="#3fa6c0" opacity=".18" /><circle cx={x} cy={y} r="5.5" fill="#aedde8" />
         </g>
       ))}
       {/* AI core chip */}
       <g filter="url(#an-shadow)">
         {[-24, -8, 8, 24].map((o) => <g key={o} stroke="#fcd34d" strokeWidth="3" strokeLinecap="round"><line x1={345 + o} y1="158" x2={345 + o} y2="148" /><line x1={345 + o} y1="242" x2={345 + o} y2="252" /><line x1="303" y1={200 + o} x2="293" y2={200 + o} /><line x1="387" y1={200 + o} x2="397" y2={200 + o} /></g>)}
         <rect x="303" y="158" width="84" height="84" rx="18" fill="url(#an-core)" />
-        <rect x="313" y="168" width="64" height="64" rx="12" fill="#2a0a12" opacity=".35" />
+        <rect x="313" y="168" width="64" height="64" rx="12" fill="#04222c" opacity=".35" />
         <text x="345" y="214" textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontSize="30" fontWeight="700" fill="#fff">AI</text>
       </g>
       {/* floating insight cards */}
       <g className="ai-float" filter="url(#an-shadow)">
         <rect x="360" y="38" width="132" height="62" rx="14" fill="#fff" />
-        <rect x="374" y="52" width="46" height="7" rx="3.5" fill="#fda4af" />
-        {[0, 1, 2, 3, 4].map((i) => <rect key={i} x={376 + i * 16} y={90 - [12, 20, 15, 26, 22][i]} width="9" height={[12, 20, 15, 26, 22][i]} rx="3" fill={i % 2 ? '#d97706' : '#be123c'} />)}
+        <rect x="374" y="52" width="46" height="7" rx="3.5" fill="#7cc6d8" />
+        {[0, 1, 2, 3, 4].map((i) => <rect key={i} x={376 + i * 16} y={90 - [12, 20, 15, 26, 22][i]} width="9" height={[12, 20, 15, 26, 22][i]} rx="3" fill={i % 2 ? '#d97706' : '#066782'} />)}
       </g>
       <g className="ai-float" style={{ animationDelay: '1.5s' }} filter="url(#an-shadow)">
         <rect x="372" y="300" width="132" height="54" rx="14" fill="#fff" />
-        <circle cx="394" cy="327" r="11" fill="#e11d48" /><path d="m388.500 327 4 4 7-8" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-        <rect x="412" y="318" width="64" height="6" rx="3" fill="#fecdd3" /><rect x="412" y="331" width="44" height="6" rx="3" fill="#ffe4e6" />
+        <circle cx="394" cy="327" r="11" fill="#0a819f" /><path d="m388.500 327 4 4 7-8" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="412" y="318" width="64" height="6" rx="3" fill="#aedde8" /><rect x="412" y="331" width="44" height="6" rx="3" fill="#d6eef4" />
       </g>
       <g className="ai-float" style={{ animationDelay: '3s' }} filter="url(#an-shadow)">
         <rect x="14" y="326" width="104" height="44" rx="12" fill="#fff" />
-        <path d="m34 340-8 8 8 8M52 340l8 8-8 8" fill="none" stroke="#be123c" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-        <rect x="68" y="342" width="38" height="6" rx="3" fill="#fcd34d" /><rect x="68" y="353" width="26" height="6" rx="3" fill="#ffe4e6" />
+        <path d="m34 340-8 8 8 8M52 340l8 8-8 8" fill="none" stroke="#066782" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        <rect x="68" y="342" width="38" height="6" rx="3" fill="#fcd34d" /><rect x="68" y="353" width="26" height="6" rx="3" fill="#d6eef4" />
       </g>
     </svg>
   )
@@ -178,8 +178,8 @@ export function AiNetworkHero({ className = '' }) {
 export function AiSpark({ size = 56, className = '' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" className={className} aria-hidden="true">
-      <g stroke="#e11d48" strokeWidth="1.6" strokeOpacity=".6"><line x1="12" y1="46" x2="30" y2="30" /><line x1="30" y1="30" x2="50" y2="40" /><line x1="30" y1="30" x2="38" y2="12" /></g>
-      {[[12, 46], [50, 40], [38, 12]].map(([x, y]) => <circle key={x} cx={x} cy={y} r="4.5" fill="#fecdd3" stroke="#e11d48" strokeWidth="1.5" />)}
+      <g stroke="#0a819f" strokeWidth="1.6" strokeOpacity=".6"><line x1="12" y1="46" x2="30" y2="30" /><line x1="30" y1="30" x2="50" y2="40" /><line x1="30" y1="30" x2="38" y2="12" /></g>
+      {[[12, 46], [50, 40], [38, 12]].map(([x, y]) => <circle key={x} cx={x} cy={y} r="4.5" fill="#aedde8" stroke="#0a819f" strokeWidth="1.5" />)}
       <path d="M30 18c1 7 5 11 12 12-7 1-11 5-12 12-1-7-5-11-12-12 7-1 11-5 12-12z" fill="#d97706" />
     </svg>
   )
@@ -197,14 +197,18 @@ export function ProjectWorkflowHero({ className = '' }) {
   ]
   const pos = steps.map((_, i) => [i % 2 === 0 ? 30 : 290, 20 + i * 64])
   return (
-    <svg viewBox="0 0 520 350" className={className} role="img" aria-label="Illustration of the complete project workflow: project shelf, allocation, SRS, Scrum build, weekly reviews and completion">
+    <svg viewBox="0 0 520 450" overflow="visible" className={className} role="img" aria-label="Illustration of the complete project workflow: project shelf, allocation, SRS, Scrum build, weekly reviews and completion">
       <defs>
-        <linearGradient id="pw-node" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#e11d48" /><stop offset="1" stopColor="#d97706" /></linearGradient>
+        <linearGradient id="pw-node" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#0a819f" /><stop offset="1" stopColor="#d97706" /></linearGradient>
+        <linearGradient id="pw-fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".55" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>
+        <mask id="pw-reflect" maskUnits="userSpaceOnUse" x="0" y="392" width="520" height="58"><rect x="0" y="392" width="520" height="58" fill="url(#pw-fade)" /></mask>
+        <radialGradient id="pw-ground" cx="50%" cy="50%" r="50%"><stop offset="0" stopColor="#04222c" stopOpacity=".28" /><stop offset="1" stopColor="#04222c" stopOpacity="0" /></radialGradient>
         <filter id="pw-shadow" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="8" floodColor="#1a050a" floodOpacity=".3" /></filter>
       </defs>
       {/* connecting path */}
       <path d={`M${pos[0][0] + 24} ${pos[0][1] + 24} ${pos.slice(1).map(([x, y], i) => `C ${pos[i][0] + 24} ${y + 24}, ${x + 24} ${pos[i][1] + 24}, ${x + 24} ${y + 24}`).join(' ')}`}
-        fill="none" stroke="#fda4af" strokeOpacity=".55" strokeWidth="3" strokeDasharray="2 7" strokeLinecap="round" className="ai-link" />
+        fill="none" stroke="#7cc6d8" strokeOpacity=".55" strokeWidth="3" strokeDasharray="2 7" strokeLinecap="round" className="ai-link" />
+      <g id="pw-steps">
       {steps.map(([title, sub], i) => {
         const [x, y] = pos[i]
         const last = i === steps.length - 1
@@ -215,11 +219,15 @@ export function ProjectWorkflowHero({ className = '' }) {
             {last
               ? <path d={`m${x + 17} ${y + 24} 5 5 9-10`} fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
               : <text x={x + 24} y={y + 29} textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontSize="14" fontWeight="700" fill="#fff">{i + 1}</text>}
-            <text x={x + 50} y={y + 21} fontFamily="Inter, system-ui, sans-serif" fontSize="13.5" fontWeight="700" fill="#4f1524">{title}</text>
-            <text x={x + 50} y={y + 37} fontFamily="Inter, system-ui, sans-serif" fontSize="11" fill="#9f1239" opacity=".8">{sub}</text>
+            <text x={x + 50} y={y + 21} fontFamily="Inter, system-ui, sans-serif" fontSize="13.5" fontWeight="700" fill="#0a4254">{title}</text>
+            <text x={x + 50} y={y + 37} fontFamily="Inter, system-ui, sans-serif" fontSize="11" fill="#07546a" opacity=".8">{sub}</text>
           </g>
         )
       })}
+      </g>
+      {/* soft ground shadow and a faint, fading reflection of the last cards */}
+      <ellipse cx="260" cy="396" rx="236" ry="9" fill="url(#pw-ground)" />
+      <g mask="url(#pw-reflect)" opacity=".5" aria-hidden="true"><use href="#pw-steps" transform="translate(0 784) scale(1 -1)" /></g>
     </svg>
   )
 }

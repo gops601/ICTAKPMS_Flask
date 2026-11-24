@@ -36,7 +36,7 @@ vi.mock('./services/adminService', async () => {
     feedbackService: { list: vi.fn().mockResolvedValue([]), send: vi.fn() },
     projectService: { list: vi.fn(), get: vi.fn(), timeline: vi.fn(), transition: vi.fn(), close: vi.fn(), reopen: vi.fn(), setMentor: vi.fn(), setMentors: vi.fn(), setBoardPermission: vi.fn(), reassignProblem: vi.fn(), allocate: vi.fn() },
     batchService: { get: vi.fn(), list: vi.fn() },
-    batchMentorService: { list: vi.fn(), assign: vi.fn(), remove: vi.fn(), reassign: vi.fn() },
+    batchMentorService: { list: vi.fn(), assign: vi.fn(), assignMany: vi.fn(), remove: vi.fn(), reassign: vi.fn() },
     studentService: { list: vi.fn() },
     psService: { list: vi.fn() },
     userService: { mentors: vi.fn() },
@@ -313,18 +313,19 @@ describe('batch detail mentors tab', () => {
   const renderDetail = () =>
     render(<MemoryRouter initialEntries={['/lead/batches/2']}><Routes><Route path="/lead/batches/:id" element={<BatchDetail />} /></Routes></MemoryRouter>)
 
-  it('lets a lead assign only not-yet-assigned mentors, showing workload', async () => {
+  it('lets a lead add several not-yet-assigned mentors at once, showing workload', async () => {
     mockUser = { id: 3, name: 'Lea', role: 'domain_lead' }
-    svc.batchMentorService.assign.mockResolvedValue([])
+    svc.batchMentorService.assignMany.mockResolvedValue([])
     renderDetail()
     await userEvent.click(await screen.findByRole('tab', { name: 'Mentors' }))
-    await userEvent.click(await screen.findByRole('button', { name: /assign mentor/i }))
-    const select = await screen.findByLabelText(/^mentor$/i)
-    const options = within(select).getAllByRole('option').map((o) => o.textContent)
-    expect(options).toEqual(['Select a mentor…', 'Max Mentor (0 projects)'])
-    await userEvent.selectOptions(select, '10')
-    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^assign$/i }))
-    expect(svc.batchMentorService.assign).toHaveBeenCalledWith(2, 10)
+    await userEvent.click(await screen.findByRole('button', { name: /add mentors/i }))
+    const dialog = await screen.findByRole('dialog')
+    expect(await within(dialog).findByText('Max Mentor')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Mia Mentor')).not.toBeInTheDocument()        // already on the batch
+    expect(within(dialog).getByRole('button', { name: /^add mentors$/i })).toBeDisabled()
+    await userEvent.click(within(dialog).getByRole('checkbox'))
+    await userEvent.click(within(dialog).getByRole('button', { name: /^add 1 mentor$/i }))
+    expect(svc.batchMentorService.assignMany).toHaveBeenCalledWith(2, [10])
   })
 
   it('confirms before removing a mentor and supports reassignment', async () => {

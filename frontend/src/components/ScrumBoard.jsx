@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Calendar, GripVertical, MessageSquare, Plus } from 'lucide-react'
+import { Calendar, GripVertical, MessageSquare, Plus, Upload } from 'lucide-react'
 import { scrumService } from '../services/adminService'
 import { errorMessage } from '../services/api'
 import Alert from './Alert'
 import Spinner from './Spinner'
 import StatusBadge from './StatusBadge'
 import TaskModal from './TaskModal'
+import BulkTasksModal from './BulkTasksModal'
 
 const PRIORITY_TONE = { low: 'grey', medium: 'blue', high: 'orange', critical: 'red' }
 
@@ -70,7 +71,7 @@ function TaskCard({ task, canMove, columns, onOpen, onDragStart, onDropOn, onMov
 export default function ScrumBoard({ projectId }) {
   const [board, setBoard] = useState(null)
   const [error, setError] = useState('')
-  const [modal, setModal] = useState(null) // { taskId } | 'new'
+  const [modal, setModal] = useState(null) // { taskId } | 'new' | 'bulk'
   const dragId = useRef(null)
 
   const load = useCallback(async () => {
@@ -115,7 +116,12 @@ export default function ScrumBoard({ projectId }) {
           <span>{stats.total} tasks</span><span>{stats.completed} done ({stats.completion_pct}%)</span>
           <span className={stats.overdue ? 'font-medium text-red-600' : ''}>{stats.overdue} overdue</span>
         </div>
-        {perms.can_create && <button className="btn-primary" onClick={() => setModal('new')}><Plus className="h-4 w-4" />New task</button>}
+        {perms.can_create && (
+          <div className="flex flex-wrap gap-2">
+            <button className="btn-secondary" onClick={() => setModal('bulk')}><Upload className="h-4 w-4" />Bulk upload</button>
+            <button className="btn-primary" onClick={() => setModal('new')}><Plus className="h-4 w-4" />New task</button>
+          </div>
+        )}
       </div>
       <Alert>{error}</Alert>
       {perms.reason && <Alert type="info">{perms.reason}</Alert>}
@@ -139,7 +145,8 @@ export default function ScrumBoard({ projectId }) {
         ))}
       </div>
 
-      {modal && (
+      {modal === 'bulk' && <BulkTasksModal projectId={projectId} onClose={() => setModal(null)} onDone={(b) => b && setBoard(b)} />}
+      {modal && modal !== 'bulk' && (
         <TaskModal projectId={projectId} taskId={modal === 'new' ? null : modal.taskId} members={board.members} permissions={perms}
           onClose={() => setModal(null)} onChanged={load} />
       )}

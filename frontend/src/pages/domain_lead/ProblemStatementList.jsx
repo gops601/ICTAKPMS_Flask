@@ -11,6 +11,7 @@ import Pagination from '../../components/Pagination'
 import StatusBadge from '../../components/StatusBadge'
 import ConfirmDialog from '../../components/ConfirmDialog'
 import Alert from '../../components/Alert'
+import ShelfReviewButtons from '../../components/ShelfReviewButtons'
 
 const DIFF_TONE = { easy: 'green', medium: 'orange', hard: 'red' }
 
@@ -93,7 +94,7 @@ export default function ProblemStatementList() {
         <Alert>{error || actionError}</Alert>
         <DataTable loading={loading} rows={items} sort={sort} onSort={onSort} empty="No projects on the shelf yet." columns={[
           { key: 'ps_code', header: 'ID', sortKey: 'ps_code' },
-          { key: 'title', header: 'Title', sortKey: 'title', render: (p) => <div>{p.title}{p.proposed_by && <div className="text-xs text-green-700">Student project · {p.proposed_by.name}</div>}
+          { key: 'title', header: 'Title', sortKey: 'title', render: (p) => <div>{p.title}{p.proposed_by && <div className="text-xs text-green-700">Student project · {p.proposed_by.name}{p.proposal?.is_group ? ` + ${p.proposal.members.length - 1} (group)` : ''}</div>}
           {p.approval_status && p.approval_status !== 'approved' && <StatusBadge tone={p.approval_status === 'pending' ? 'orange' : 'red'}>{p.approval_status === 'pending' ? 'Awaiting mentor approval' : p.approval_status}</StatusBadge>}</div> },
           { key: 'domain', header: 'Domain', render: (p) => <div>{p.domain.name}{p.subdomain && <div className="text-xs text-slate-500">{p.subdomain.name}</div>}</div> },
           { key: 'source_type', header: 'Type', render: (p) => (p.source_type === 'industry'
@@ -105,6 +106,7 @@ export default function ProblemStatementList() {
           { key: 'actions', header: 'Actions', render: (p) => (
             <div className="flex flex-wrap gap-2">
               <Link className="btn-secondary" to={`${base}/project-shelf/${p.id}`}><Eye className="h-4 w-4" />View</Link>
+              <ShelfReviewButtons ps={p} onDone={reload} />
               {!readOnly && <Link className="btn-secondary" to={`${base}/project-shelf/${p.id}/edit`}><Pencil className="h-4 w-4" />Edit</Link>}
               {!readOnly && <button className="btn-secondary" onClick={() => setToggle(p)}>{p.status === 'active' ? 'Deactivate' : 'Activate'}</button>}
               {!readOnly && <button className="btn-danger" aria-label={`Delete ${p.ps_code}`} onClick={() => { setActionError(''); setDeleting(p) }}><Trash2 className="h-4 w-4" />Delete</button>}

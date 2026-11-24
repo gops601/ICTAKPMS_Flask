@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Download, KeyRound, Plus, Trash2 } from 'lucide-react'
+import { Download, KeyRound, Plus, Repeat, Trash2 } from 'lucide-react'
 import { domainService, userService } from '../../services/adminService'
 import { errorMessage, fieldErrors } from '../../services/api'
 import { useDebounced, useList } from '../../hooks/useList'
@@ -10,19 +10,21 @@ import DataTable from '../../components/DataTable'
 import Pagination from '../../components/Pagination'
 import Modal from '../../components/Modal'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import MentorTransferModal from '../../components/MentorTransferModal'
 import StatusBadge from '../../components/StatusBadge'
 import Alert from '../../components/Alert'
 
 function CreateUserModal({ domains, onClose, onDone, fixedRole }) {
   const [form, setForm] = useState({
     role: fixedRole || 'mentor', name: '', email: '', phone: '', domain_id: '', domain_ids: [], designation: '',
-    mentor_type: 'internal', company: '', industry_sector: '', experience_years: '', linkedin_url: '', bio: '',
+    mentor_type: 'internal', company: '', industry_sector: '', experience_years: '', linkedin_url: '', bio: '', also_mentor: false,
   })
   const [error, setError] = useState('')
   const [errs, setErrs] = useState({})
   const [busy, setBusy] = useState(false)
   const [created, setCreated] = useState(null)
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
+  const isMentor = form.role === 'mentor' || (form.role === 'admin' && form.also_mentor)
 
   const submit = async (e) => {
     e.preventDefault(); setError(''); setErrs({})
@@ -30,7 +32,8 @@ function CreateUserModal({ domains, onClose, onDone, fixedRole }) {
     setBusy(true)
     const body = { role: form.role, name: form.name, email: form.email, phone: form.phone || null }
     if (form.role === 'domain_lead') body.domain_ids = form.domain_ids
-    if (form.role === 'mentor') {
+    if (form.role === 'admin' && form.also_mentor) body.also_mentor = true
+    if (isMentor) {
       body.domain_id = form.domain_id ? Number(form.domain_id) : null
       body.designation = form.designation || null
       body.mentor_type = form.mentor_type
@@ -54,7 +57,7 @@ function CreateUserModal({ domains, onClose, onDone, fixedRole }) {
     )
   }
   const err = (k) => errs[k] && <p className="mt-1 text-xs text-red-600">{errs[k]}</p>
-  const industry = form.role === 'mentor' && form.mentor_type === 'industry'
+  const industry = isMentor && form.mentor_type === 'industry'
   return (
     <Modal title="Create user" onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
@@ -85,7 +88,13 @@ function CreateUserModal({ domains, onClose, onDone, fixedRole }) {
             <p className="mt-1 text-xs text-slate-500">The lead sees only these domains' batches and Project Shelf.</p>
           </fieldset>
         )}
-        {form.role === 'mentor' && (
+        {form.role === 'admin' && (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={form.also_mentor} onChange={(e) => setForm({ ...form, also_mentor: e.target.checked })} />
+            Also add this administrator as a mentor
+          </label>
+        )}
+        {isMentor && (
           <>
             <div><label htmlFor="u-dom" className="label">Domain *</label>
               <select id="u-dom" className="input" required value={form.domain_id} onChange={set('domain_id')}>
@@ -214,6 +223,7 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
   const [credentials, setCredentials] = useState(false)
   const [deleting, setDeleting] = useState(null)
   const [domainsFor, setDomainsFor] = useState(null)
+  const [transfer, setTransfer] = useState(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
   const dq = useDebounced(q)
@@ -224,7 +234,7 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
   const { items: raw, meta, loading, error, reload } = useList(isMentors ? userService.mentors : userService.list, {
     q: dq, role: fixedRole || role || undefined, page, mentor_type: isMentors ? mentorType || undefined : undefined,
   })
-  const items = isMentors ? raw.map((m) => ({ ...m, id: m.user_id, role: m.is_domain_lead ? 'domain_lead' : 'mentor' })) : raw
+  const items = isMentors ? raw.map((m) => ({ ...m, mentor_id: m.id, id: m.user_id, role: m.is_domain_lead ? 'domain_lead' : 'mentor' })) : raw
 
   const doReset = async () => {
     setBusy(true)
@@ -288,6 +298,7 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
             <div className="flex flex-wrap gap-2">
               <button className="btn-secondary" onClick={() => setResetFor(u)}><KeyRound className="h-4 w-4" />Reset password</button>
               {u.role === 'domain_lead' && <button className="btn-secondary" onClick={() => setDomainsFor(u)}>Domains</button>}
+              {isMentors && <button className="btn-secondary" aria-label={`Replace or remove ${u.name}`} onClick={() => setTransfer({ id: u.mentor_id, name: u.name })}><Repeat className="h-4 w-4" />Replace / remove</button>}
               <button className="btn-secondary" onClick={() => setToggle(u)}>{u.is_active ? 'Deactivate' : 'Activate'}</button>
               <button className="btn-danger" onClick={() => { setActionError(''); setDeleting(u) }} aria-label={`Delete ${u.name}`}><Trash2 className="h-4 w-4" />Delete</button>
             </div>
@@ -299,6 +310,7 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
       {resetFor && <ConfirmDialog message={`Reset the password for ${resetFor.name}? A new temporary password will be generated.`} confirmLabel="Reset password" busy={busy} onConfirm={doReset} onCancel={() => setResetFor(null)} />}
       {toggle && <ConfirmDialog message={`${toggle.is_active ? 'Deactivate' : 'Activate'} ${toggle.name}?`} confirmLabel={toggle.is_active ? 'Deactivate' : 'Activate'} danger={toggle.is_active} busy={busy} onConfirm={doToggle} onCancel={() => setToggle(null)} />}
       {domainsFor && <LeadDomainsModal lead={domainsFor} domains={domains} onClose={() => setDomainsFor(null)} onSaved={() => { setDomainsFor(null); reload() }} />}
+      {transfer && <MentorTransferModal mentor={transfer} onClose={() => setTransfer(null)} onDone={() => { setTransfer(null); reload() }} />}
       {credentials && credRole && <StaffCredentialsModal role={credRole} onClose={() => setCredentials(false)} />}
       {deleting && <ConfirmDialog danger confirmLabel="Delete permanently" busy={busy} onConfirm={doDelete} onCancel={() => setDeleting(null)}
         message={`Permanently delete ${deleting.name} (${deleting.email})? This cannot be undone. If they have work attached you will be asked to deactivate instead.`} />}

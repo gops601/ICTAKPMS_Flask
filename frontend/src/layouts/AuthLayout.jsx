@@ -17,11 +17,11 @@ export default function AuthLayout({ title, subtitle, children }) {
           <LogoMark size={44} />
           <div><div className="text-2xl font-bold tracking-tight">{APP_NAME}</div><div className="text-sm text-rose-700">{APP_TAGLINE}</div></div>
         </div>
-        <div className="relative">
+        <div className="relative pb-6">
           <h2 className="max-w-md text-3xl font-semibold leading-tight">From the project shelf to final evaluation, in one place.</h2>
           {heroImage
-            ? <img src={heroImage} alt="" className="mt-6 max-h-[340px] w-full rounded-2xl object-cover shadow-2xl" />
-            : <ProjectWorkflowHero className="mt-4 w-full max-w-xl" />}
+            ? <img src={heroImage} alt="" className="mt-6 max-h-[340px] w-full rounded-2xl object-cover shadow-2xl [-webkit-box-reflect:below_6px_linear-gradient(transparent_72%,rgba(255,255,255,0.28))]" />
+            : <ProjectWorkflowHero className="mt-4 w-full max-w-xl drop-shadow-[0_18px_28px_rgba(4,34,44,0.12)]" />}
         </div>
         <ul className="relative space-y-2 text-sm text-rose-900/90">
           {FEATURES.map((f) => <li key={f} className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-amber-600" aria-hidden />{f}</li>)}

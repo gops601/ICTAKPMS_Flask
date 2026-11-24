@@ -1,3 +1,4 @@
+import re
 import hashlib
 import hmac
 import io
@@ -8,7 +9,7 @@ import jwt
 from openpyxl import Workbook, load_workbook
 
 from app.extensions import db
-from app.models import Batch, ExternalPortal, Notification, ProblemStatement, Student, User
+from app.models import Batch, Domain, ExternalPortal, Notification, ProblemStatement, Student, User
 from app.services import data_collection
 from tests.test_student_shelf import CSV, PDF, domain, world  # noqa: F401
 
@@ -120,6 +121,8 @@ def test_admin_manages_portals_and_the_secret_is_shown_once(client, world):     
 
 
 def test_push_enrols_batches_and_students_idempotently(client, world):           # noqa: F811
+    from app.services.domain_sync_service import ensure_lead_mentor_profile
+    ensure_lead_mentor_profile(db.session.query(User).filter_by(email="lead@x.com").one(), db.session.query(Domain).filter_by(code="AIML").one().id)
     p = make_portal(client, world)
     db.session.query(Notification).delete()
     db.session.commit()
@@ -127,10 +130,10 @@ def test_push_enrols_batches_and_students_idempotently(client, world):          
     s = r.get_json()["data"]
     assert r.status_code == 200 and (s["batches_created"], s["students_created"], s["problems"]) == (1, 2, [])
     batch = db.session.query(Batch).filter_by(external_ref="EXT-1").one()
-    assert batch.code.startswith("ICT_AIML_") and batch.domain.code == "AIML" and str(batch.start_date) == "2026-01-05"
+    assert re.fullmatch(r"[A-Z]+_ONLINE_0001", batch.code) and batch.domain.code == "AIML" and str(batch.start_date) == "2026-01-05"
     assert db.session.query(Student).filter_by(batch_id=batch.id).count() == 2
     assert db.session.query(Notification).filter_by(type="batch_assigned").count() >= 1       # the domain lead hears about it
-    assert any(m.mentor.user.email == "m1@x.com" for m in batch.batch_mentors)                 # domain mentors join automatically
+    assert {m.mentor.user.email for m in batch.batch_mentors} == {"lead@x.com"}                # only the domain lead joins by default
     again = push(client, p, PAYLOAD).get_json()["data"]
     assert (again["batches_created"], again["students_created"], again["batches_updated"], again["students_updated"]) == (0, 0, 1, 2)
     assert db.session.query(Batch).filter_by(external_ref="EXT-1").count() == 1

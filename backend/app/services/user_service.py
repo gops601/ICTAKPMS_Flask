@@ -7,7 +7,7 @@ from app.models import (Batch, BatchMentor, DomainLead, Mentor, Notification, Pa
                         Student, StudentProposal, User)
 from app.services.auth_service import create_user, validate_password_strength
 from app.utils.errors import AppError, NotFound
-from app.utils.ids import generate_id
+from app.utils.ids import next_scoped_id
 
 
 def generate_temp_password():
@@ -45,7 +45,7 @@ def clean_mentor_profile(mentor_type, designation, company, industry_sector, exp
 
 def create_staff_user(role, name, email, password, phone=None, domain_id=None, designation=None, expertise=None,
                       mentor_type="internal", company=None, industry_sector=None, experience_years=None,
-                      linkedin_url=None, bio=None, domain_ids=None):
+                      linkedin_url=None, bio=None, domain_ids=None, also_mentor=False):
     if role == "student":
         raise AppError("Students are created through the student endpoints (a batch is required)", 422)
     domains = []
@@ -60,8 +60,12 @@ def create_staff_user(role, name, email, password, phone=None, domain_id=None, d
         if any(not d.is_active for d in domains):
             raise AppError("An inactive domain cannot be assigned", 422, {"domain_ids": "Domain is inactive"})
     profile = clean_mentor_profile(mentor_type, designation, company, industry_sector, experience_years,
-                                   linkedin_url, bio) if role == "mentor" else None  # validate before creating the user
+                                   linkedin_url, bio) if role == "mentor" or (role == "admin" and also_mentor) else None  # validate before creating the user
+    if role == "admin" and also_mentor and not domain_id:
+        raise AppError("Choose the domain this administrator will mentor in", 422, {"domain_id": "Domain is required"})
     user = create_user(role, name, email, password, phone)
+    if role == "admin" and also_mentor:         # an administrator who is also a mentor
+        db.session.add(Mentor(user_id=user.id, domain_id=domain_id, expertise=expertise, **profile))
     for i, d in enumerate(domains):
         db.session.add(DomainLead(user_id=user.id, domain_id=d.id, is_primary=(i == 0)))
     if role == "mentor":
@@ -74,9 +78,8 @@ def create_staff_user(role, name, email, password, phone=None, domain_id=None, d
 def create_student(batch, name, email, phone, registration_no, extra_fields=None, password=None):
     """Create user + student profile. Returns (student, temp_password)."""
     registration_no = (registration_no or "").strip()
-    if not registration_no:  # left blank: the system issues an ICT_STU_XXXXXX id
-        registration_no = generate_id("STU", lambda c: db.session.query(Student.id).filter(
-            db.func.lower(Student.registration_no) == c.lower()).first() is not None)
+    if not registration_no:  # left blank: the system issues <OU>_<MODE>_NNNN, numbered per OU + mode across all batches
+        registration_no = next_scoped_id(batch.ou.code, batch.mode, Student.registration_no)
     if db.session.query(Student).filter_by(batch_id=batch.id).filter(
             db.func.lower(Student.registration_no) == registration_no.lower()).first():
         raise AppError(f"Registration number '{registration_no}' already exists in this batch", 409)
@@ -87,6 +90,34 @@ def create_student(batch, name, email, phone, registration_no, extra_fields=None
     db.session.add(student)
     db.session.flush()
     return student, password
+
+
+def validate_new_students(rows):
+    """Check a list of {name,email,registration_no} for a not-yet-created batch; 422 listing every bad row."""
+    from app.services.fields import EMAIL_RE
+    existing = {e[0].lower() for e in db.session.query(User.email).all()}
+    seen_email, seen_reg, errors = {}, {}, {}
+    for i, r in enumerate(rows, 1):
+        email = (r.get("email") or "").strip().lower()
+        reg = (r.get("registration_no") or "").strip().lower()
+        r["email"], r["name"] = email, (r.get("name") or "").strip()
+        if len(r["name"]) < 2:
+            errors[f"students.{i}.name"] = f"Student {i}: name is required"
+        if not EMAIL_RE.match(email):
+            errors[f"students.{i}.email"] = f"Student {i}: '{email}' is not a valid email"
+        elif email in existing:
+            errors[f"students.{i}.email"] = f"Student {i}: email '{email}' is already registered"
+        elif email in seen_email:
+            errors[f"students.{i}.email"] = f"Student {i}: duplicate email (same as student {seen_email[email]})"
+        else:
+            seen_email[email] = i
+        if reg:
+            if reg in seen_reg:
+                errors[f"students.{i}.registration_no"] = f"Student {i}: duplicate registration number (same as student {seen_reg[reg]})"
+            else:
+                seen_reg[reg] = i
+    if errors:
+        raise AppError("; ".join(errors.values()), 422, errors)
 
 
 def credential_row(student, temporary_password):
@@ -212,7 +243,7 @@ def delete_user(user, actor):
                 for fx in files:
                     file_service.delete_file_if_unused(fx)
             db.session.delete(s)
-    elif role == "mentor":
+    elif role in ("mentor", "admin"):           # an admin may also hold a mentor profile
         m = db.session.query(Mentor).filter_by(user_id=user.id).first()
         if m:
             batches = db.session.query(BatchMentor).filter_by(mentor_id=m.id, is_active=True).count()

@@ -91,7 +91,6 @@ export default function App() {
             <Route path="/admin/portals" element={<PortalConnections />} />
             <Route path="/admin/batches" element={<BatchList />} />
             <Route path="/admin/batches/new" element={<BatchForm />} />
-            <Route path="/admin/batches/upload" element={<Navigate to="/admin/uploads?tab=batches" replace />} />
             <Route path="/admin/uploads" element={<UploadCenter />} />
             <Route path="/admin/domain-leads" element={<UserManagement fixedRole="domain_lead" title="Domain Leads" subtitle="Create domain lead accounts, then assign them to domains under Domains." addLabel="Add domain lead" />} />
             <Route path="/admin/mentors" element={<UserManagement fixedRole="mentor" title="Mentors" subtitle="Create mentor accounts. Batch assignment is done by the Domain Lead." addLabel="Add mentor" />} />

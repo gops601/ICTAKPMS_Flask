@@ -13,6 +13,7 @@ import GithubPanel from './GithubPanel'
 import FeedbackPanel from './FeedbackPanel'
 import ConfirmDialog from './ConfirmDialog'
 import ProjectMentorsModal from './ProjectMentorsModal'
+import ProjectTeamModal from './ProjectTeamModal'
 
 const STAGE_LABEL = {
   allocated: 'Project Allocated', srs_preparation: 'SRS Preparation', srs_submitted: 'SRS Submitted',
@@ -52,6 +53,7 @@ export default function ProjectView({ id }) {
   const role = user.role
   const canManage = role === 'admin' || role === 'domain_lead'
   const canClose = role === 'domain_lead' || role === 'admin'
+  const canEditTeam = role === 'admin' || role === 'domain_lead' || role === 'mentor'   // never students; the server checks the mentor is on this project
   const [project, setProject] = useState(null)
   const [timeline, setTimeline] = useState([])
   const [error, setError] = useState('')
@@ -99,6 +101,7 @@ export default function ProjectView({ id }) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {project.is_delayed && <StatusBadge tone="red">Delayed</StatusBadge>}
+          {project.project_type_label && <StatusBadge tone="blue">{project.project_type_label}</StatusBadge>}
           <StageBadge stage={project.stage} label={project.stage_label} />
           {project.total_weeks && <StatusBadge tone="grey">{project.mode === 'offline' ? 'Offline' : 'Online'} · {project.total_weeks} weeks</StatusBadge>}
           {project.is_closed && <StatusBadge tone="grey"><span className="inline-flex items-center gap-1"><Lock className="h-3 w-3" />Closed</span></StatusBadge>}
@@ -153,12 +156,21 @@ export default function ProjectView({ id }) {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">People</h2>
           <div>
             <div className="text-xs text-slate-500">{project.members.length > 1 ? 'Team' : 'Student'}</div>
-            <ul className="text-sm">{project.members.map((m) => <li key={m.student_id}>{m.name}{m.is_lead ? ' (lead)' : ''} <span className="text-slate-400">· {m.registration_no}</span></li>)}</ul>
+            <ul className="text-sm">{project.members.map((m) => <li key={m.student_id}>{m.name}{m.is_lead ? ' (lead)' : ''} <span className="text-slate-400">· {m.registration_no}</span>{m.role && <span className="ml-2 rounded-full bg-brand-light px-2 py-0.5 text-xs font-medium text-brand-dark">{m.role}</span>}</li>)}</ul>
+            {role === 'student' && project.members.length > 1 && <p className="mt-1 text-xs text-slate-500">Only your mentor or Domain Lead can change the group.</p>}
           </div>
           <div>
             <div className="text-xs text-slate-500">Mentor{project.mentors.length > 1 ? 's' : ''}{project.mentor_override ? ' (project-specific)' : ''}</div>
-            <div className="text-sm">{project.mentors.length ? project.mentors.map((m) => m.name).join(', ') : <span className="text-slate-400">None assigned</span>}</div>
+            {project.mentors.length ? (
+              <ul className="text-sm">
+                {project.mentors.map((m) => (
+                  <li key={m.id}>{m.name}
+                  </li>
+                ))}
+              </ul>
+            ) : <div className="text-sm"><span className="text-slate-400">None assigned</span></div>}
           </div>
+          {canEditTeam && project.stage !== 'completed' && !project.is_closed && <div><button className="btn-secondary" onClick={() => setModal('team')}>Change team</button></div>}
           {canManage && (
             <div className="flex flex-wrap gap-2">
               <button className="btn-secondary" onClick={openMentor}>Assign mentors</button>
@@ -255,6 +267,7 @@ export default function ProjectView({ id }) {
           </div>
         </Modal>
       )}
+      {modal === 'team' && <ProjectTeamModal project={project} onClose={() => setModal(null)} onSaved={() => { setModal(null); load() }} />}
       {modal === 'mentor' && <ProjectMentorsModal project={project} role={role} onClose={() => setModal(null)} onSaved={() => { setModal(null); load() }} />}
       {modal === 'problem' && (
         <Modal title="Change project" onClose={() => setModal(null)}

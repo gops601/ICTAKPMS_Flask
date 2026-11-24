@@ -18,7 +18,7 @@ export default function AllocatePage() {
   const [mentors, setMentors] = useState([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState(new Set())
-  const [form, setForm] = useState({ ps_id: '', mode: 'individual', mentor_id: '', start_date: '' })
+  const [form, setForm] = useState({ ps_id: '', mode: 'individual', mentor_id: '', start_date: '', project_type: '' })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -39,6 +39,7 @@ export default function AllocatePage() {
 
   const free = students.filter((s) => !s.project)
   const toggle = (sid) => setSelected((cur) => { const n = new Set(cur); n.has(sid) ? n.delete(sid) : n.add(sid); return n })
+  const academic = batch?.ou?.code === 'ACADEMIC'   // Academic OU projects are Add-on Courses, Summer Internships or Other
   const allSelected = free.length > 0 && selected.size === free.length
 
   const submit = async (e) => {
@@ -46,10 +47,12 @@ export default function AllocatePage() {
     setError('')
     if (!form.ps_id) return setError('Choose a project from the Project Shelf.')
     if (selected.size === 0) return setError('Select at least one student.')
+    if (academic && !form.project_type) return setError('Choose the project type.')
     setBusy(true)
     try {
       await projectService.allocate({
         batch_id: Number(id), mentor_id: form.mentor_id ? Number(form.mentor_id) : null, start_date: form.start_date || null,
+        ...(academic ? { project_type: form.project_type } : {}),
         items: [{ problem_statement_id: Number(form.ps_id), student_ids: [...selected], team: form.mode === 'team' }],
       })
       navigate(`${base}/batches/${id}`)
@@ -72,6 +75,17 @@ export default function AllocatePage() {
             </select>
             {statements.length === 0 && <p className="mt-1 text-xs text-orange-700">No active projects on the Project Shelf for this domain yet.</p>}
           </div>
+          {academic && (
+            <div>
+              <label htmlFor="al-type" className="label">Project type *</label>
+              <select id="al-type" className="input" value={form.project_type} onChange={(e) => setForm({ ...form, project_type: e.target.value })}>
+                <option value="">Select…</option>
+                <option value="addon_course">Add-on Course</option>
+                <option value="summer_internship">Summer Internship</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          )}
           <div>
             <label htmlFor="al-mentor" className="label">Mentor (optional override)</label>
             <select id="al-mentor" className="input" value={form.mentor_id} onChange={(e) => setForm({ ...form, mentor_id: e.target.value })}>

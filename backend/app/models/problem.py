@@ -80,6 +80,8 @@ class StudentProposal(TimestampMixin, db.Model):
     reviewed_at = db.Column(db.DateTime)
     remarks = db.Column(db.Text)
     data_collection = db.Column(db.JSON)  # rows of the detailed data-collection sheet (one per dataset)
+    is_group = db.Column(db.Boolean, default=False, server_default=db.false(), nullable=False)
+    group_members = db.Column(db.JSON)  # [{"student_id": 1, "role": "Team Lead"}, ...] - the submitter first
 
     student = db.relationship("Student")
     file = db.relationship("FileAttachment")

@@ -81,7 +81,8 @@ def test_mentor_assignment_is_domain_scoped_and_notifies(client, world):
     assign(client, world, world["m1"])
     assert db.session.query(Notification).filter_by(user_id=world["m1u"].id, type="batch_assigned").count() == 1
     student_user = world["students"][0].user_id
-    assert db.session.query(Notification).filter_by(user_id=student_user, type="mentor_assigned").count() == 1
+    # a student without a project hears nothing about the batch's mentors yet
+    assert db.session.query(Notification).filter_by(user_id=student_user, type="mentor_assigned").count() == 0
 
 
 def test_mentor_sees_only_assigned_batch(client, world):
@@ -441,15 +442,15 @@ def test_notifications_api(client, world):
     allocate(client, world, [0])
     h = world["H"]["s1"]
     r = client.get("/api/notifications", headers=h).get_json()
-    assert r["meta"]["total"] == 2                      # mentor assigned + project allocated
-    assert client.get("/api/notifications/unread-count", headers=h).get_json()["data"]["count"] == 2
+    assert r["meta"]["total"] == 1                      # project allocated (no mentor news before a project existed)
+    assert client.get("/api/notifications/unread-count", headers=h).get_json()["data"]["count"] == 1
     nid = r["data"][0]["id"]
     assert client.post(f"/api/notifications/{nid}/read", headers=h).status_code == 200
-    assert client.get("/api/notifications/unread-count", headers=h).get_json()["data"]["count"] == 1
-    assert client.get("/api/notifications?unread=1", headers=h).get_json()["meta"]["total"] == 1
+    assert client.get("/api/notifications/unread-count", headers=h).get_json()["data"]["count"] == 0
+    assert client.get("/api/notifications?unread=1", headers=h).get_json()["meta"]["total"] == 0
     # cannot touch someone else's notification
     assert client.post(f"/api/notifications/{nid}/read", headers=world["H"]["s2"]).status_code == 404
-    assert client.get("/api/notifications", headers=world["H"]["s2"]).get_json()["meta"]["total"] == 1  # only the batch-mentor one
+    assert client.get("/api/notifications", headers=world["H"]["s2"]).get_json()["meta"]["total"] == 0  # s2 has no project yet
     assert client.post("/api/notifications/read-all", headers=h).status_code == 200
     assert client.get("/api/notifications/unread-count", headers=h).get_json()["data"]["count"] == 0
     assert client.get("/api/notifications").status_code == 401

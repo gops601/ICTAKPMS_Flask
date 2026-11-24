@@ -46,7 +46,7 @@ def create_user(data):
     user = user_service.create_staff_user(data["role"], data["name"], data["email"], password, data["phone"],
                                           data["domain_id"], data["designation"], data["expertise"],
                                           data["mentor_type"], data["company"], data["industry_sector"],
-                                          data["experience_years"], data["linkedin_url"], data["bio"], data["domain_ids"])
+                                          data["experience_years"], data["linkedin_url"], data["bio"], data["domain_ids"], data["also_mentor"])
     audit(current_user().id, "user.create", "user", user.id, {"role": data["role"]})
     if data["role"] == "mentor" and data["domain_id"]:
         # the domain's leads see the new mentor straight away (their Mentors page is scoped by domain) and are told
@@ -59,7 +59,7 @@ def create_user(data):
         from app.models import Mentor
         from app.services import domain_sync_service
         domain_sync_service.auto_assign_mentor_to_batches(db.session.query(Mentor).filter_by(user_id=user.id).one(), current_user())
-    if data["role"] == "mentor" and data["domain_id"]:
+    if (data["role"] == "mentor" or (data["role"] == "admin" and data["also_mentor"])) and data["domain_id"]:
         # ... and the mentor is put on every active batch of that domain automatically
         from app.models import Mentor
         from app.services import domain_sync_service

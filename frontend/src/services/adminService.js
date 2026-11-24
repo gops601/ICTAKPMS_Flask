@@ -59,6 +59,13 @@ export const portalService = {
   },
 }
 
+export const mentorService = {
+  /** Remove a mentor from every batch/project the caller manages, handing them to `toMentorId` (null = just remove). */
+  /** The student's own mentors (names only). */
+  mine: () => api.get('/my/mentors').then(d),
+  transfer: (mentorId, toMentorId) => api.post(`/mentors/${mentorId}/transfer`, { to_mentor_id: toMentorId || null }).then((r) => r.data),
+}
+
 export const userService = {
   list: (params) => api.get('/admin/users', { params }).then(withMeta),
   create: (body) => api.post('/admin/users', body).then(d),
@@ -126,7 +133,9 @@ export const psService = {
 export const proposalService = {
   mine: () => api.get('/proposals/mine').then(d),
   list: (params) => api.get('/proposals', { params }).then(withMeta),
-  submit: (title, summary, file, datasets = [], subdomainId = null, dataSheet = null) => {
+  classmates: () => api.get('/proposals/classmates').then(d),
+  reviewFromShelf: (psId, decision, remarks) => api.post(`/proposals/shelf/${psId}/review`, { decision, remarks }).then(d),
+  submit: (title, summary, file, datasets = [], subdomainId = null, dataSheet = null, projectMode = 'individual', members = []) => {
     const form = new FormData()
     form.append('title', title)
     if (summary) form.append('summary', summary)
@@ -134,6 +143,10 @@ export const proposalService = {
     form.append('file', file)
     datasets.forEach((f) => form.append('datasets', f))
     if (dataSheet) form.append('data_sheet', dataSheet)
+    if (projectMode === 'group') {
+      form.append('project_mode', 'group')
+      form.append('members', JSON.stringify(members))
+    }
     return api.post('/proposals', form).then(d)
   },
   projectTemplate: (format = 'xlsx') => downloadFile('/proposals/project-template', { format }, `project_template.${format}`),
@@ -151,6 +164,7 @@ export const projectService = {
   transition: (id, to, reason) => api.post(`/projects/${id}/transition`, { to, reason }).then(d),
   close: (id) => api.post(`/projects/${id}/close`).then(d),
   reopen: (id, to, reason) => api.post(`/projects/${id}/reopen`, { to, reason }).then(d),
+  setMembers: (id, members, reason) => api.put(`/projects/${id}/members`, { members, reason: reason || null }).then(d),
   setMentors: (id, mentor_ids, reason) => api.put(`/projects/${id}/mentors`, { mentor_ids, reason: reason || null }).then(d),
   setMentor: (id, mentor_id, reason) => api.put(`/projects/${id}/mentor`, { mentor_id, reason: reason || null }).then(d),
   remove: (id) => api.delete(`/projects/${id}`).then(d),
@@ -166,6 +180,7 @@ export const feedbackService = {
 export const batchMentorService = {
   list: (batchId) => api.get(`/batches/${batchId}/mentors`).then(d),
   assign: (batchId, mentor_id) => api.post(`/batches/${batchId}/mentors`, { mentor_id }).then(d),
+  assignMany: (batchId, mentor_ids) => api.post(`/batches/${batchId}/mentors/bulk`, { mentor_ids }).then(d),
   assignDomain: (batchId) => api.post(`/batches/${batchId}/mentors/assign-domain`).then(d),
   remove: (batchId, mentorId) => api.delete(`/batches/${batchId}/mentors/${mentorId}`).then(d),
   reassign: (batchId, mentorId, to_mentor_id) => api.post(`/batches/${batchId}/mentors/${mentorId}/reassign`, { to_mentor_id }).then(d),
@@ -205,6 +220,12 @@ export const scrumService = {
   remove: (id) => api.delete(`/scrum/tasks/${id}`).then(d),
   comment: (id, body) => api.post(`/scrum/tasks/${id}/comments`, { body }).then(d),
   overview: (params) => api.get('/scrum/overview', { params }).then(withMeta),
+  bulkTemplate: (projectId, format = 'xlsx') => downloadFile(`/scrum/projects/${projectId}/tasks/template`, { format }, `scrum_tasks_template.${format}`),
+  bulkUpload: (projectId, file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post(`/scrum/projects/${projectId}/tasks/bulk`, form).then(d)
+  },
 }
 
 export const reviewService = {

@@ -4,7 +4,7 @@ import re
 from app.extensions import db
 from app.models import (Subdomain, Batch, BatchOUDetail, Domain, DomainLead, OrganisationalUnit, OUCustomField,
                         Student, User)
-from app.utils.ids import generate_id
+from app.utils.ids import next_scoped_id
 from app.services.fields import FIELD_TYPES, parse_date, validate_custom_value
 from app.utils.errors import AppError, NotFound
 
@@ -229,6 +229,15 @@ def validate_batch_data(ou, data, existing=None):
         errors["domain"] = f"Domain '{domain.name}' is inactive"
     clean["domain_id"] = domain.id if domain else None
 
+    sub_id = data.get("subdomain_id") or None
+    clean["subdomain_id"] = None
+    if sub_id:
+        sd = db.session.get(Subdomain, sub_id)
+        if not sd or (domain and sd.domain_id != domain.id):
+            errors["subdomain"] = "The subdomain does not belong to the selected domain"
+        else:
+            clean["subdomain_id"] = sd.id
+
     for key in ("start_date", "end_date"):
         raw = data.get(key)
         if raw in (None, ""):
@@ -272,19 +281,17 @@ def _apply_details(batch, ou, details):
             batch.ou_details.append(BatchOUDetail(field_id=field.id, value=value))
 
 
-def new_batch_code(domain_id):
-    """System-issued batch ID: ICT_<DOMAIN SHORT CODE>_<6 mixed letters/digits>, e.g. ICT_AIML_7K3Q9X."""
-    domain = db.session.get(Domain, domain_id) if domain_id else None
-    kind = re.sub(r"[^A-Za-z0-9]", "", domain.code).upper() if domain else "BATCH"
-    return generate_id(kind, lambda c: _ci_exists(Batch, Batch.code, c))
+def new_batch_code(ou, mode="online"):
+    """System-issued batch ID: <OU CODE>_<MODE>_<4 digits>, e.g. ACADEMIC_ONLINE_0001."""
+    return next_scoped_id(ou.code, mode if mode in ("online", "offline") else "online", Batch.code)
 
 
 def create_batch(data):
     # The batch ID is always system-generated (any code sent by the client is ignored).
-    data = {**data, "code": new_batch_code(data.get("domain_id"))}
     ou = get_ou(data["ou_id"])
     if not ou.is_active:
         raise AppError("Cannot create a batch under an inactive OU", 422)
+    data = {**data, "code": new_batch_code(ou, str(data.get("mode") or "online").strip().lower())}
     clean, errors = validate_batch_data(ou, data)
     if errors:
         raise AppError("Validation failed", 422, errors)
@@ -292,7 +299,7 @@ def create_batch(data):
 
 
 def build_batch(ou, clean):
-    batch = Batch(code=clean["code"], name=clean["name"], ou_id=ou.id, domain_id=clean["domain_id"], mode=clean.get("mode", "online"),
+    batch = Batch(code=clean["code"], name=clean["name"], ou_id=ou.id, domain_id=clean["domain_id"], subdomain_id=clean.get("subdomain_id"), mode=clean.get("mode", "online"),
                   start_date=clean["start_date"], end_date=clean["end_date"])
     db.session.add(batch)
     db.session.flush()
@@ -304,7 +311,7 @@ def update_batch(batch, data):
     data = {k: v for k, v in data.items() if k != "code"}  # the generated batch ID never changes
     if data.get("ou_id") and data["ou_id"] != batch.ou_id:
         raise AppError("A batch's OU cannot be changed after creation", 422)
-    merged = {"code": batch.code, "name": batch.name, "domain_id": batch.domain_id, "mode": batch.mode,
+    merged = {"code": batch.code, "name": batch.name, "domain_id": batch.domain_id, "subdomain_id": batch.subdomain_id, "mode": batch.mode,
               "start_date": batch.start_date, "end_date": batch.end_date,
               "details": {d.field.field_key: d.value for d in batch.ou_details}}
     merged.update({k: v for k, v in data.items() if k in merged and k != "details"})
@@ -319,6 +326,7 @@ def update_batch(batch, data):
             raise AppError("The batch already has projects, so it cannot switch between online and offline (their review plan is fixed).", 409)
         batch.mode = clean["mode"]
     batch.code, batch.name, batch.domain_id = clean["code"], clean["name"], clean["domain_id"]
+    batch.subdomain_id = clean["subdomain_id"]
     batch.start_date, batch.end_date = clean["start_date"], clean["end_date"]
     _apply_details(batch, batch.ou, clean["details"])
     return batch

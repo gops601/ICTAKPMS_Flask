@@ -29,9 +29,11 @@ def _norm(text):
 
 def batch_columns(ou):
     cols = [
-        {"header": "Batch Code", "key": "code", "required": True},
+        {"header": "Batch Code", "key": "code", "required": False},   # blank = generated <OU>_<MODE>_NNNN
         {"header": "Batch Name", "key": "name", "required": True},
-        {"header": "Domain Code", "key": "domain", "required": True},
+        {"header": "Domain Name", "key": "domain", "required": True, "aliases": ["Domain Code", "Domain"]},
+        {"header": "Domain ID", "key": "domain_id", "required": False},       # filled by a formula in the template; ignored on import
+        {"header": "SubDomain", "key": "subdomain", "required": False, "aliases": ["Sub Domain"]},
         {"header": "Batch Mode", "key": "mode", "required": False},
         {"header": "Start Date", "key": "start_date", "required": False},
         {"header": "End Date", "key": "end_date", "required": False},
@@ -46,7 +48,7 @@ def student_columns(ou):
         {"header": "Student Name", "key": "name", "required": True},
         {"header": "Email", "key": "email", "required": True},
         {"header": "Phone Number", "key": "phone", "required": False},
-        {"header": "Registration Number", "key": "registration_no", "required": True},
+        {"header": "Registration Number", "key": "registration_no", "required": False},   # blank = generated <OU>_<MODE>_NNNN
         {"header": "Batch Code", "key": "batch_code", "required": True},
     ]
     for f in org_service.active_fields(ou, "student"):
@@ -55,7 +57,7 @@ def student_columns(ou):
 
 
 def _aliases(col):
-    names = {_norm(col["header"]), _norm(col["key"].split(".")[-1])}
+    names = {_norm(col["header"]), _norm(col["key"].split(".")[-1])} | {_norm(a) for a in col.get("aliases", [])}
     return names
 
 
@@ -105,20 +107,32 @@ class BatchImporter:
 
     def validate(self, ou, rows, user=None):
         """rows: list of (row_number, dict). Returns list of (row_number, clean|None, [(field,msg)])."""
-        domains = {d.code.lower(): d for d in db.session.query(Domain).all()}
+        all_domains = db.session.query(Domain).all()
+        domains = {d.name.lower(): d for d in all_domains}
+        domains.update({d.code.lower(): d for d in all_domains})        # the domain's name or its short code
         seen, out = {}, []
         for rn, raw in rows:
             errs = []
             domain_code = (raw.get("domain") or "").strip()
             domain = domains.get(domain_code.lower()) if domain_code else None
-            data = {"code": raw.get("code"), "name": raw.get("name"), "domain_id": domain.id if domain else None, "mode": raw.get("mode"),
+            given_code = (raw.get("code") or "").strip()
+            sub_name = (raw.get("subdomain") or "").strip()
+            subdomain = None
+            if sub_name and domain:
+                subdomain = next((s for s in domain.subdomains if s.is_active and s.name.lower() == sub_name.lower()), None)
+            data = {"code": given_code or "AUTO", "name": raw.get("name"), "domain_id": domain.id if domain else None,
+                    "subdomain_id": subdomain.id if subdomain else None, "mode": raw.get("mode"),
                     "start_date": raw.get("start_date"), "end_date": raw.get("end_date"),
                     "details": {k.split(".", 1)[1]: v for k, v in raw.items() if k.startswith("details.")}}
             clean, field_errors = org_service.validate_batch_data(ou, data)
             for k, msg in field_errors.items():
                 if k == "domain" and domain_code and domain is None:
-                    msg = f"Domain code '{domain_code}' does not exist"
+                    msg = f"Domain '{domain_code}' does not exist"
                 errs.append((k, msg))
+            if sub_name and domain and subdomain is None:
+                errs.append(("subdomain", f"SubDomain '{sub_name}' does not exist in {domain.name}"))
+            elif sub_name and domain is None:
+                errs.append(("subdomain", "Choose a valid domain before the subdomain"))
             code_key = (raw.get("code") or "").strip().lower()
             if code_key:
                 if code_key in seen:
@@ -129,6 +143,8 @@ class BatchImporter:
                 out.append((rn, None, errs))
             else:
                 clean = dict(clean)
+                if not given_code:
+                    clean["code"] = None                  # issued when the batch is created
                 for k in ("start_date", "end_date"):
                     clean[k] = clean[k].isoformat() if clean[k] else None
                 out.append((rn, clean, []))
@@ -142,7 +158,9 @@ class BatchImporter:
             for k in ("start_date", "end_date"):
                 d[k] = date.fromisoformat(d[k]) if d[k] else None
             # Re-check at commit time: another request may have taken the code since preview.
-            if org_service._ci_exists(Batch, Batch.code, d["code"]):
+            if not d["code"]:
+                d["code"] = org_service.new_batch_code(ou, d.get("mode"))
+            elif org_service._ci_exists(Batch, Batch.code, d["code"]):
                 raise AppError(f"Batch code '{d['code']}' was created by someone else; re-upload the file", 409)
             org_service.build_batch(ou, d)
             created += 1
@@ -187,9 +205,7 @@ class StudentImporter:
                 errs.append(("batch_code", "Batch code is required"))
             elif batch is None:
                 errs.append(("batch_code", f"Batch '{batch_code}' not found in {ou.name}"))
-            if not reg:
-                errs.append(("registration_no", "Registration number is required"))
-            elif batch is not None:
+            if reg and batch is not None:                  # blank = the system issues one
                 key = (batch.id, reg.lower())
                 if key in existing_regs:
                     errs.append(("registration_no", f"Registration number '{reg}' already exists in batch {batch.code}"))

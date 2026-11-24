@@ -32,6 +32,7 @@ def proposal_to_dict(p):
             "datasets": [{"id": d.id, "name": d.file.original_name, "size_bytes": d.file.size_bytes} for d in p.datasets],
             "subdomain": {"id": p.subdomain.id, "name": p.subdomain.name} if p.subdomain else None,
             "shelf": {"id": p.problem_statement.id, "ps_code": p.problem_statement.ps_code} if p.problem_statement else None,
+            "is_group": p.is_group, "members": proposal_service.members_view(p),
             "student": {"id": s.id, "name": s.user.name, "registration_no": s.registration_no,
                         "batch": {"id": s.batch.id, "code": s.batch.code, "name": s.batch.name}},
             "submitted_at": p.created_at.isoformat(),
@@ -130,19 +131,61 @@ def submit_proposal():
         raise NotFound("Student profile not found")
     p = proposal_service.submit(student, request.form.get("title"), request.form.get("summary"),
                                 request.files.get("file"), user, request.files.getlist("datasets"),
-                                request.form.get("subdomain_id", type=int), request.files.get("data_sheet"))
+                                request.form.get("subdomain_id", type=int), request.files.get("data_sheet"),
+                                request.form.get("project_mode") or "individual", _parse_members(request.form.get("members")))
     audit(user.id, "proposal.submit", "student_proposal", p.id)
     db.session.commit()
     return ok(proposal_to_dict(p), "Problem statement submitted for mentor approval", 201)
 
 
+def _parse_members(raw):
+    import json
+    from app.utils.errors import AppError
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        raise AppError("members must be a JSON list", 422, {"members": "Invalid members"})
+    if not isinstance(data, list):
+        raise AppError("members must be a JSON list", 422, {"members": "Invalid members"})
+    return data
+
+
+@bp.get("/classmates")
+@bp.doc(security=SEC, description="Batch-mates the student can still add to a group project (no project, no proposal, not in another group).")
+@roles_required("student")
+def classmates():
+    student = student_profile(current_user())
+    if not student:
+        raise NotFound("Student profile not found")
+    return ok({"me": student.id, "max_group_size": proposal_service.MAX_GROUP_SIZE,
+               "students": [{"id": s.id, "name": s.user.name, "registration_no": s.registration_no}
+                            for s in proposal_service.free_classmates(student)]})
+
+
 @bp.post("/<int:proposal_id>/review")
-@bp.doc(security=SEC, description="decision: approve | reject (remarks required when rejecting)")
+@bp.doc(security=SEC, description="decision: approve | reject (remarks required when rejecting). Mentors of the batch, the domain lead and admins.")
 @bp.arguments(ProposalReviewSchema)
-@roles_required("mentor")
+@roles_required("mentor", "domain_lead", "admin")
 def review_proposal(data, proposal_id):
     user = current_user()
     p = proposal_service.review(_get(user, proposal_id), data["decision"], data["remarks"], user)
+    audit(user.id, f"proposal.{p.status}", "student_proposal", p.id)
+    db.session.commit()
+    return ok(proposal_to_dict(p))
+
+
+@bp.post("/shelf/<int:ps_id>/review")
+@bp.doc(security=SEC, description="Approve / reject a student's project straight from the Project Shelf entry.")
+@bp.arguments(ProposalReviewSchema)
+@roles_required("mentor", "domain_lead", "admin")
+def review_from_shelf(data, ps_id):
+    user = current_user()
+    proposal = db.session.scalar(_scoped(user).where(StudentProposal.problem_statement_id == ps_id))
+    if not proposal:
+        raise NotFound("Student project not found")
+    p = proposal_service.review(proposal, data["decision"], data["remarks"], user)
     audit(user.id, f"proposal.{p.status}", "student_proposal", p.id)
     db.session.commit()
     return ok(proposal_to_dict(p))

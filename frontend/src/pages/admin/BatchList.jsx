@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Download, Eye, Pencil, Plus, Trash2, Upload } from 'lucide-react'
+import { Download, Eye, Pencil, Plus, Trash2, UserPlus } from 'lucide-react'
 import { batchService, domainService, ouService, reportService } from '../../services/adminService'
 import { errorMessage } from '../../services/api'
 import { useDebounced, useList } from '../../hooks/useList'
@@ -9,6 +9,7 @@ import DataTable from '../../components/DataTable'
 import Pagination from '../../components/Pagination'
 import StatusBadge from '../../components/StatusBadge'
 import ConfirmDialog from '../../components/ConfirmDialog'
+import AddBatchMentorsModal from '../../components/AddBatchMentorsModal'
 import Alert from '../../components/Alert'
 
 export default function BatchList() {
@@ -21,6 +22,7 @@ export default function BatchList() {
   const [ous, setOus] = useState([])
   const [domains, setDomains] = useState([])
   const [toggle, setToggle] = useState(null)
+  const [addingMentors, setAddingMentors] = useState(null)
   const [deleting, setDeleting] = useState(null)
   const [withStudents, setWithStudents] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -56,7 +58,6 @@ export default function BatchList() {
     <div>
       <PageHeader title="Batches" subtitle="All batches across OUs and domains."
         actions={<>
-          <Link to="/admin/uploads?tab=batches" className="btn-secondary"><Upload className="h-4 w-4" />Bulk upload</Link>
           <Link to="/admin/batches/new" className="btn-primary"><Plus className="h-4 w-4" />New batch</Link>
         </>} />
       <div className="card">
@@ -85,6 +86,7 @@ export default function BatchList() {
           { key: 'actions', header: 'Actions', render: (b) => (
             <div className="flex flex-wrap gap-2">
               <Link className="btn-secondary" to={`/admin/batches/${b.id}/overview`}><Eye className="h-4 w-4" />View</Link>
+              {b.status === 'active' && <button className="btn-secondary" aria-label={`Add mentors to ${b.code}`} onClick={() => setAddingMentors(b)}><UserPlus className="h-4 w-4" />Add mentors</button>}
               <Link className="btn-secondary" to={`/admin/batches/${b.id}`}><Pencil className="h-4 w-4" />Edit</Link>
               <button className="btn-secondary" aria-label={`Download detailed report for ${b.code}`} onClick={() => reportService.batchDetailed(b.id).catch((e) => setActionError(errorMessage(e, 'Download failed')))}><Download className="h-4 w-4" />Report</button>
               <button className="btn-secondary" onClick={() => setToggle(b)}>{b.status === 'active' ? 'Close' : 'Reopen'}</button>
@@ -94,6 +96,7 @@ export default function BatchList() {
         ]} />
         <Pagination meta={meta} onPage={setPage} />
       </div>
+      {addingMentors && <AddBatchMentorsModal batch={addingMentors} onClose={() => setAddingMentors(null)} onDone={() => { setAddingMentors(null); reload() }} />}
       {deleting && (
         <ConfirmDialog danger confirmLabel="Delete permanently" busy={busy} onConfirm={confirmDelete} onCancel={() => setDeleting(null)}
           message={<div className="space-y-3 text-left">
