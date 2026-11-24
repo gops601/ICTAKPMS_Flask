@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { projectService } from '../../services/adminService'
 import { errorMessage } from '../../services/api'
 import ProjectView from '../../components/ProjectView'
@@ -22,7 +23,7 @@ export default function MyProject() {
     return (
       <div>
         <PageHeader title="My Project" />
-        <div className="card"><EmptyState title="No project has been allocated to you yet.">You'll be notified as soon as your Domain Lead allocates one.</EmptyState></div>
+        <div className="card"><EmptyState title="No project has been allocated to you yet.">Your mentor or Domain Lead will allocate one &ndash; or <Link className="text-brand underline" to="/student/proposal">add your own project</Link>. You&apos;ll be notified.</EmptyState></div>
       </div>
     )
   }

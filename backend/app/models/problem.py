@@ -22,12 +22,19 @@ class ProblemStatement(TimestampMixin, db.Model):
     estimated_duration = db.Column(db.String(60))
     required_skills = db.Column(db.Text)
     status = db.Column(db.String(20), default="active", nullable=False)  # active | inactive
+    # Staff-created entries are approved. A student's project lands on the shelf immediately as "pending" and only a
+    # mentor's approval makes it allocatable / lets the student start the SRS.
+    approval_status = db.Column(db.String(20), default="approved", server_default="approved", nullable=False, index=True)  # approved | pending | rejected | withdrawn
     source_type = db.Column(db.String(20), default="internal", server_default="internal", nullable=False, index=True)  # internal | industry
     industry = db.Column(db.String(120), index=True)  # sector; required when source_type == industry
     created_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
+    # Set when the entry came from an approved student proposal ("student projects" on the shelf)
+    proposed_by_student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="SET NULL"), index=True)
+    data_collection = db.Column(db.JSON)  # detailed dataset descriptions from the student's data-collection sheet
 
     domain = db.relationship("Domain")
     subdomain = db.relationship("Subdomain")
+    proposer = db.relationship("Student")
     datasets = db.relationship("ProblemStatementDataset", back_populates="problem_statement",
                                cascade="all, delete-orphan")
     documents = db.relationship("ProblemStatementDocument", back_populates="problem_statement",
@@ -66,10 +73,28 @@ class StudentProposal(TimestampMixin, db.Model):
     title = db.Column(db.String(255), nullable=False)
     summary = db.Column(db.Text)
     file_id = db.Column(db.Integer, db.ForeignKey("file_attachments.id", ondelete="RESTRICT"), nullable=False)
-    status = db.Column(db.String(20), default="pending", nullable=False, index=True)  # pending | approved | rejected
+    status = db.Column(db.String(20), default="pending", nullable=False, index=True)  # pending | approved | rejected | withdrawn
+    subdomain_id = db.Column(db.Integer, db.ForeignKey("subdomains.id", ondelete="SET NULL"))
+    problem_statement_id = db.Column(db.Integer, db.ForeignKey("problem_statements.id", ondelete="SET NULL"))  # shelf entry created on approval
     reviewed_by = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"))
     reviewed_at = db.Column(db.DateTime)
     remarks = db.Column(db.Text)
+    data_collection = db.Column(db.JSON)  # rows of the detailed data-collection sheet (one per dataset)
 
     student = db.relationship("Student")
+    file = db.relationship("FileAttachment")
+    subdomain = db.relationship("Subdomain")
+    problem_statement = db.relationship("ProblemStatement")
+    datasets = db.relationship("ProposalDataset", back_populates="proposal", cascade="all, delete-orphan")
+
+
+class ProposalDataset(TimestampMixin, db.Model):
+    """A dataset the student uploaded with their proposal; copied onto the shelf entry when it is approved."""
+    __tablename__ = "proposal_datasets"
+    id = db.Column(db.Integer, primary_key=True)
+    proposal_id = db.Column(db.Integer, db.ForeignKey("student_proposals.id", ondelete="CASCADE"), nullable=False, index=True)
+    file_id = db.Column(db.Integer, db.ForeignKey("file_attachments.id", ondelete="RESTRICT"), nullable=False)
+    description = db.Column(db.String(255))
+
+    proposal = db.relationship("StudentProposal", back_populates="datasets")
     file = db.relationship("FileAttachment")

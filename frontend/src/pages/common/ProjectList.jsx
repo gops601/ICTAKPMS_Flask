@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Eye } from 'lucide-react'
+import { Eye, UserPlus } from 'lucide-react'
 import { projectService } from '../../services/adminService'
+import { useAuth } from '../../context/AuthContext'
+import ProjectMentorsModal from '../../components/ProjectMentorsModal'
 import { useDebounced, useList } from '../../hooks/useList'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
@@ -24,8 +26,11 @@ export default function ProjectList({ title = 'Projects', subtitle = 'Progress, 
   const [delayed, setDelayed] = useState(false)
   const [batchId, setBatchId] = useState('')
   const [page, setPage] = useState(1)
+  const { user } = useAuth()
+  const [assigning, setAssigning] = useState(null)
+  const canAssign = user.role === 'domain_lead' || user.role === 'admin'
   const dq = useDebounced(q)
-  const { items, meta, loading, error } = useList(projectService.list, {
+  const { items, meta, loading, error, reload } = useList(projectService.list, {
     q: dq, stage: stage || undefined, batch_id: batchId || undefined, delayed: delayed ? 1 : undefined, page,
   })
 
@@ -49,10 +54,15 @@ export default function ProjectList({ title = 'Projects', subtitle = 'Progress, 
           { key: 'stage', header: 'Stage', render: (p) => <StageBadge stage={p.stage} label={p.stage_label} /> },
           { key: 'progress', header: 'Progress', render: (p) => <ProgressBar value={p.progress} /> },
           { key: 'delay', header: '', render: (p) => p.is_delayed ? <StatusBadge tone="red">Delayed</StatusBadge> : null },
-          { key: 'actions', header: '', render: (p) => <Link className="btn-secondary" to={`/projects/${p.id}`}><Eye className="h-4 w-4" />Open</Link> },
+          { key: 'actions', header: '', render: (p) => (
+            <div className="flex flex-wrap gap-2">
+              <Link className="btn-secondary" to={`/projects/${p.id}`}><Eye className="h-4 w-4" />Open</Link>
+              {canAssign && p.stage !== 'completed' && <button className="btn-secondary" aria-label={`Assign mentors to ${p.title}`} onClick={() => setAssigning(p)}><UserPlus className="h-4 w-4" />Assign mentor</button>}
+            </div>) },
         ]} />
         <Pagination meta={meta} onPage={setPage} />
       </div>
+      {assigning && <ProjectMentorsModal project={assigning} role={user.role} onClose={() => setAssigning(null)} onSaved={() => { setAssigning(null); reload() }} />}
     </div>
   )
 }

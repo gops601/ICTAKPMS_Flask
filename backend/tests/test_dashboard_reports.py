@@ -122,7 +122,7 @@ def test_bulk_metrics_use_a_constant_number_of_queries(world, app):
         project_metrics(projects)
     finally:
         event.remove(engine, "before_cursor_execute", tick)
-    assert count["n"] <= 5                                                # reviews, scores, github, tasks, weights
+    assert count["n"] <= 6                                                # reviews, scores, github, tasks, weights, batch modes
 
 
 # ------------------------------------------------------------------ admin

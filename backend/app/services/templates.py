@@ -26,6 +26,8 @@ def build_template(import_type, ou, fmt):
                 "select": "One of: " + ", ".join(map(str, field.options or []))}.get(field.field_type, "") if field else ""
         if c["key"] == "domain":
             note = "Use the domain code, e.g. AIML"
+        elif c["key"] == "mode":
+            note = "online (4 weeks) or offline (3 weeks). Default online"
         elif c["key"] == "difficulty":
             note = "easy, medium or hard (default medium)"
         elif c["key"] == "status":

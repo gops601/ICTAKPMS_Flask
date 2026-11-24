@@ -40,6 +40,15 @@ class ProjectStudent(TimestampMixin, db.Model):
     student = db.relationship("Student")
 
 
+class ProjectMentor(TimestampMixin, db.Model):
+    """A mentor explicitly assigned to a project. Several may be assigned; Project.mentor_id mirrors the first."""
+    __tablename__ = "project_mentors"
+    __table_args__ = (db.UniqueConstraint("project_id", "mentor_id", name="uq_project_mentor"),)
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    mentor_id = db.Column(db.Integer, db.ForeignKey("mentors.id", ondelete="CASCADE"), nullable=False, index=True)
+
+
 class ProjectAssignment(TimestampMixin, db.Model):
     """History of allocations / mentor reassignments for a project."""
     __tablename__ = "project_assignments"

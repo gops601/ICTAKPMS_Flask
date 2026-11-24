@@ -78,16 +78,17 @@ export default function BatchList() {
           { key: 'name', header: 'Name', sortKey: 'name' },
           { key: 'ou', header: 'OU', render: (b) => b.ou.name },
           { key: 'domain', header: 'Domain', render: (b) => b.domain?.name || '—' },
+          { key: 'mode', header: 'Mode', render: (b) => `${b.mode === 'offline' ? 'Offline' : 'Online'} · ${b.total_weeks} wk` },
           { key: 'start_date', header: 'Start', sortKey: 'start_date', render: (b) => b.start_date || '—' },
           { key: 'student_count', header: 'Students' },
           { key: 'status', header: 'Status', render: (b) => <StatusBadge status={b.status} /> },
           { key: 'actions', header: 'Actions', render: (b) => (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Link className="btn-secondary" to={`/admin/batches/${b.id}/overview`}><Eye className="h-4 w-4" />View</Link>
               <Link className="btn-secondary" to={`/admin/batches/${b.id}`}><Pencil className="h-4 w-4" />Edit</Link>
               <button className="btn-secondary" aria-label={`Download detailed report for ${b.code}`} onClick={() => reportService.batchDetailed(b.id).catch((e) => setActionError(errorMessage(e, 'Download failed')))}><Download className="h-4 w-4" />Report</button>
               <button className="btn-secondary" onClick={() => setToggle(b)}>{b.status === 'active' ? 'Close' : 'Reopen'}</button>
-              <button className="btn-secondary" aria-label={`Delete batch ${b.code}`} onClick={() => { setActionError(''); setWithStudents(false); setDeleting(b) }}><Trash2 className="h-4 w-4" />Delete</button>
+              <button className="btn-danger" aria-label={`Delete batch ${b.code}`} onClick={() => { setActionError(''); setWithStudents(false); setDeleting(b) }}><Trash2 className="h-4 w-4" />Delete</button>
             </div>
           ) },
         ]} />

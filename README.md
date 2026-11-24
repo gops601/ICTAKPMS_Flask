@@ -1,6 +1,6 @@
-# ICTAKPMS
+# ICTAK
 
-ICTAKPMS is a web application for managing student projects from problem-statement allocation through SRS approval,
+ICTAK is a web application for managing student projects from problem-statement allocation through SRS approval,
 Scrum tracking, weekly reviews and final evaluation, across multiple OUs, domains and batches.
 
 **Stack:** Flask · SQLAlchemy · Flask-Migrate · JWT · MySQL 8 · React (Vite) · Tailwind · Docker Compose.

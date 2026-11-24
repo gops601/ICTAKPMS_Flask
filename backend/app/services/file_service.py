@@ -83,3 +83,17 @@ def delete_file(attachment):
     """Remove the stored object and its metadata row (call after detaching it from owners)."""
     get_storage().delete(attachment.storage_key)
     db.session.delete(attachment)
+
+
+def delete_file_if_unused(attachment):
+    """Delete the stored object only when nothing else (shelf entry, proposal, SRS) still points at it.
+
+    Approved student proposals share their files with the shelf entry, so either side may be removed first."""
+    from app.models import (ProblemStatementDataset, ProblemStatementDocument, ProposalDataset, SrsSubmission,
+                            StudentProposal)
+    db.session.flush()
+    for model in (ProblemStatementDataset, ProblemStatementDocument, ProposalDataset, StudentProposal, SrsSubmission):
+        if db.session.query(model).filter(model.file_id == attachment.id).first():
+            return False
+    delete_file(attachment)
+    return True

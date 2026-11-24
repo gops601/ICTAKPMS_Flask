@@ -34,7 +34,7 @@ vi.mock('./services/adminService', async () => {
   return {
     ...actual,
     feedbackService: { list: vi.fn().mockResolvedValue([]), send: vi.fn() },
-    projectService: { list: vi.fn(), get: vi.fn(), timeline: vi.fn(), transition: vi.fn(), close: vi.fn(), reopen: vi.fn(), setMentor: vi.fn(), setBoardPermission: vi.fn(), reassignProblem: vi.fn(), allocate: vi.fn() },
+    projectService: { list: vi.fn(), get: vi.fn(), timeline: vi.fn(), transition: vi.fn(), close: vi.fn(), reopen: vi.fn(), setMentor: vi.fn(), setMentors: vi.fn(), setBoardPermission: vi.fn(), reassignProblem: vi.fn(), allocate: vi.fn() },
     batchService: { get: vi.fn(), list: vi.fn() },
     batchMentorService: { list: vi.fn(), assign: vi.fn(), remove: vi.fn(), reassign: vi.fn() },
     studentService: { list: vi.fn() },
@@ -174,15 +174,32 @@ describe('project view', () => {
     expect(await within(screen.getByRole('dialog')).findByRole('alert')).toHaveTextContent(/at least 5 characters/)
   })
 
-  it('lets a lead assign a project-specific mentor from the batch mentors only', async () => {
+  it('lets a lead assign one or several mentors, from the batch mentors only', async () => {
     mockUser = { id: 3, name: 'Lea', role: 'domain_lead' }
     svc.batchMentorService.list.mockResolvedValue([{ id: 9, name: 'Mia Mentor' }, { id: 10, name: 'Max Mentor' }])
-    svc.projectService.setMentor.mockResolvedValue({})
+    svc.projectService.setMentors.mockResolvedValue({})
     renderView()
-    await userEvent.click(await screen.findByRole('button', { name: /assign mentor/i }))
-    await userEvent.selectOptions(await screen.findByLabelText(/mentor for this project/i), '10')
+    await userEvent.click(await screen.findByRole('button', { name: /assign mentors/i }))
+    await userEvent.click(await screen.findByRole('checkbox', { name: 'Max Mentor' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Mia Mentor' }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^save$/i }))
-    expect(svc.projectService.setMentor).toHaveBeenCalledWith(7, 10)
+    expect(svc.projectService.setMentors).toHaveBeenCalledWith(7, expect.arrayContaining([9, 10]), '')
+    expect(svc.batchMentorService.list).toHaveBeenCalled()      // leads are limited to the batch's mentors
+  })
+
+  it('lets an admin assign ANY active mentors to the running project, with a reason', async () => {
+    mockUser = { id: 1, name: 'Ada', role: 'admin' }
+    svc.userService.mentors.mockResolvedValue({ items: [{ id: 9, name: 'Mia Mentor', is_active: true }, { id: 11, name: 'Outside Mentor', is_active: true }, { id: 12, name: 'Gone', is_active: false }], meta: {} })
+    svc.projectService.setMentors.mockResolvedValue({})
+    renderView()
+    await userEvent.click(await screen.findByRole('button', { name: /assign mentors/i }))
+    const outside = await screen.findByRole('checkbox', { name: 'Outside Mentor' })
+    expect(screen.queryByRole('checkbox', { name: 'Gone' })).not.toBeInTheDocument()       // inactive mentors are not offered
+    expect(svc.batchMentorService.list).not.toHaveBeenCalled()
+    await userEvent.click(outside)
+    await userEvent.type(screen.getByLabelText(/reason/i), 'Workload balance')
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^save$/i }))
+    expect(svc.projectService.setMentors).toHaveBeenCalledWith(7, expect.arrayContaining([11]), 'Workload balance')
   })
 
   it('no longer has a mentor board-editing toggle (mentors always change the board)', async () => {

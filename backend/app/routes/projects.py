@@ -2,10 +2,10 @@ from flask import request
 from flask_smorest import Blueprint
 
 from app.extensions import db
-from app.models import Batch, Mentor, Project, ProjectStudent, Student, User
+from app.models import Batch, Mentor, Project, ProjectMentor, ProjectStudent, Student, User
 from app.permissions import current_user, login_required, roles_required
 from app.permissions.scope import ensure_batch_access, ensure_project_access, scoped_projects
-from app.schemas.project import (AllocationSchema, ProjectMentorSchema, ProjectSettingsSchema, ReassignProblemSchema,
+from app.schemas.project import (AllocationSchema, ProjectMentorSchema, ProjectMentorsSchema, ProjectSettingsSchema, ReassignProblemSchema,
                                  ReopenSchema, TransitionSchema, project_to_dict, timeline)
 from app.services import lifecycle, project_service
 from app.utils.audit import audit
@@ -41,7 +41,8 @@ def list_projects():
     if a.get("stage") in lifecycle.STAGES:
         q = q.where(Project.stage == a["stage"])
     if a.get("mentor_id", type=int):
-        q = q.where(Project.mentor_id == a.get("mentor_id", type=int))
+        mid = a.get("mentor_id", type=int)
+        q = q.where(db.or_(Project.mentor_id == mid, Project.id.in_(db.select(ProjectMentor.project_id).where(ProjectMentor.mentor_id == mid))))
     if a.get("domain_id", type=int):
         q = q.where(Project.batch_id.in_(db.select(Batch.id).where(Batch.domain_id == a.get("domain_id", type=int))))
     if a.get("q"):
@@ -109,6 +110,19 @@ def reopen(data, project_id):
     return ok(project_to_dict(project, True, user.role_name), "Project reopened")
 
 
+@bp.put("/projects/<int:project_id>/mentors")
+@bp.doc(security=SEC, description="Domain lead (own domain) or admin: set the project's mentors (one or several). Empty list = the batch's mentors.")
+@bp.arguments(ProjectMentorsSchema)
+@roles_required(*MANAGERS)
+def set_mentors(data, project_id):
+    user = current_user()
+    project = ensure_project_access(user, project_id)
+    project_service.set_project_mentors(project, data["mentor_ids"], user, data.get("reason"))
+    audit(user.id, "project.mentors", "project", project.id, {"mentor_ids": data["mentor_ids"], "reason": data.get("reason")})
+    db.session.commit()
+    return ok(project_to_dict(project, True, user.role_name))
+
+
 @bp.put("/projects/<int:project_id>/mentor")
 @bp.doc(security=SEC)
 @bp.arguments(ProjectMentorSchema)
@@ -116,10 +130,22 @@ def reopen(data, project_id):
 def set_mentor(data, project_id):
     user = current_user()
     project = ensure_project_access(user, project_id)
-    project_service.set_project_mentor(project, data["mentor_id"], user)
-    audit(user.id, "project.mentor", "project", project.id, {"mentor_id": data["mentor_id"]})
+    project_service.set_project_mentor(project, data["mentor_id"], user, data.get("reason"))
+    audit(user.id, "project.mentor", "project", project.id, {"mentor_id": data["mentor_id"], "reason": data.get("reason")})
     db.session.commit()
     return ok(project_to_dict(project, True, user.role_name))
+
+
+@bp.delete("/projects/<int:project_id>")
+@bp.doc(security=SEC, description="Admin only. Permanently deletes a project with its reviews, board, SRS and feedback.")
+@roles_required("admin")
+def delete_project(project_id):
+    user = current_user()
+    project = ensure_project_access(user, project_id)
+    info = project_service.delete_project(project)
+    audit(user.id, "project.delete", "project", project_id, info)
+    db.session.commit()
+    return ok(message=f"Project {info['code'] or info['title']} was deleted")
 
 
 @bp.patch("/projects/<int:project_id>/settings")

@@ -32,6 +32,7 @@ def batch_columns(ou):
         {"header": "Batch Code", "key": "code", "required": True},
         {"header": "Batch Name", "key": "name", "required": True},
         {"header": "Domain Code", "key": "domain", "required": True},
+        {"header": "Batch Mode", "key": "mode", "required": False},
         {"header": "Start Date", "key": "start_date", "required": False},
         {"header": "End Date", "key": "end_date", "required": False},
     ]
@@ -110,7 +111,7 @@ class BatchImporter:
             errs = []
             domain_code = (raw.get("domain") or "").strip()
             domain = domains.get(domain_code.lower()) if domain_code else None
-            data = {"code": raw.get("code"), "name": raw.get("name"), "domain_id": domain.id if domain else None,
+            data = {"code": raw.get("code"), "name": raw.get("name"), "domain_id": domain.id if domain else None, "mode": raw.get("mode"),
                     "start_date": raw.get("start_date"), "end_date": raw.get("end_date"),
                     "details": {k.split(".", 1)[1]: v for k, v in raw.items() if k.startswith("details.")}}
             clean, field_errors = org_service.validate_batch_data(ou, data)

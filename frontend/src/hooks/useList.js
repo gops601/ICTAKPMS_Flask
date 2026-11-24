@@ -33,5 +33,14 @@ export function useList(fetcher, params) {
   }, [key])
 
   useEffect(() => { load() }, [load])
+
+  // Someone else (a mentor approving, a lead assigning, an admin adding) may have changed the data while this tab was
+  // in the background: refresh when the user comes back to it.
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === 'visible') load() }
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    return () => { document.removeEventListener('visibilitychange', refresh); window.removeEventListener('focus', refresh) }
+  }, [load])
   return { ...state, reload: load }
 }

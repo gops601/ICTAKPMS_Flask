@@ -176,10 +176,10 @@ describe('batch filter on list pages', () => {
 })
 
 describe('app name', () => {
-  it('is ICTAKPMS on the sign-in screen', () => {
-    expect(APP_NAME).toBe('ICTAKPMS')
+  it('is ICTAK on the sign-in screen', () => {
+    expect(APP_NAME).toBe('ICTAK')
     render(<AuthLayout title="Sign in"><p>form</p></AuthLayout>)
-    expect(screen.getAllByText('ICTAKPMS').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('ICTAK').length).toBeGreaterThan(0)
     expect(screen.queryByText(/PLMS|ProjectLMS/)).not.toBeInTheDocument()
   })
 })

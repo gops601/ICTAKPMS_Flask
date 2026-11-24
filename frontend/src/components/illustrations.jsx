@@ -1,3 +1,5 @@
+import ictakLogo from '../assets/ictak-logo.jpg'
+
 /**
  * Hand-built SVG illustrations (no external assets, crisp at any size, theme-coloured).
  * To use your own photography/AI artwork instead, set VITE_HERO_IMAGE (see README) – the sign-in page picks it up.
@@ -5,15 +7,7 @@
 
 export function LogoMark({ size = 36, className = '' }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 48 48" className={className} role="img" aria-label="ICTAKPMS logo">
-      <defs>
-        <linearGradient id="lm-bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#e11d48" /><stop offset="1" stopColor="#d97706" /></linearGradient>
-      </defs>
-      <rect width="48" height="48" rx="13" fill="url(#lm-bg)" />
-      <path d="M24 11 8.5 19l15.5 8 12-6.2V30h2.5V19.6z" fill="#fff" opacity=".95" />
-      <path d="M15 25.2v5.1c0 2.3 4.1 4.2 9 4.2s9-1.9 9-4.2v-5.1l-9 4.6z" fill="#fff" opacity=".85" />
-      <circle cx="37.2" cy="33" r="2" fill="#fcd34d" />
-    </svg>
+    <img src={ictakLogo} height={size} style={{ height: size, width: 'auto' }} className={`rounded-md object-contain ${className}`} alt="ICTAK logo" />
   )
 }
 
@@ -104,10 +98,10 @@ export function BannerArt({ className = '' }) {
   const edges = [[0, 3], [0, 4], [1, 4], [1, 5], [2, 5], [2, 4], [3, 6], [4, 6], [4, 7], [5, 7], [6, 8], [7, 8]]
   return (
     <svg viewBox="0 0 260 120" className={className} aria-hidden="true">
-      <circle cx="210" cy="26" r="38" fill="#fff" opacity=".07" />
-      {edges.map(([a, b], i) => <line key={i} x1={pts[a][0]} y1={pts[a][1]} x2={pts[b][0]} y2={pts[b][1]} stroke="#fff" strokeOpacity=".3" strokeWidth="1.2" className="ai-link" />)}
-      {pts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={i === 8 ? 8 : 4.5} fill={i === 8 ? '#fcd34d' : '#fff'} opacity={i === 8 ? 1 : 0.75} className="ai-node" style={{ animationDelay: `${i * 0.3}s` }} />)}
-      <path d="M232 30l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#fcd34d" />
+      <circle cx="210" cy="26" r="38" fill="#e11d48" opacity=".10" />
+      {edges.map(([a, b], i) => <line key={i} x1={pts[a][0]} y1={pts[a][1]} x2={pts[b][0]} y2={pts[b][1]} stroke="#e11d48" strokeOpacity=".35" strokeWidth="1.2" className="ai-link" />)}
+      {pts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={i === 8 ? 8 : 4.5} fill={i === 8 ? '#f59e0b' : '#fb7185'} opacity={i === 8 ? 1 : 0.8} className="ai-node" style={{ animationDelay: `${i * 0.3}s` }} />)}
+      <path d="M232 30l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#f59e0b" />
     </svg>
   )
 }
@@ -187,6 +181,45 @@ export function AiSpark({ size = 56, className = '' }) {
       <g stroke="#e11d48" strokeWidth="1.6" strokeOpacity=".6"><line x1="12" y1="46" x2="30" y2="30" /><line x1="30" y1="30" x2="50" y2="40" /><line x1="30" y1="30" x2="38" y2="12" /></g>
       {[[12, 46], [50, 40], [38, 12]].map(([x, y]) => <circle key={x} cx={x} cy={y} r="4.5" fill="#fecdd3" stroke="#e11d48" strokeWidth="1.5" />)}
       <path d="M30 18c1 7 5 11 12 12-7 1-11 5-12 12-1-7-5-11-12-12 7-1 11-5 12-12z" fill="#d97706" />
+    </svg>
+  )
+}
+
+/** Sign-in hero: the complete project workflow as a connected journey, from the shelf to a closed project. */
+export function ProjectWorkflowHero({ className = '' }) {
+  const steps = [
+    ['Project Shelf', 'Choose a project'],
+    ['Allocation', 'Mentor & team'],
+    ['SRS', 'Submit & approve'],
+    ['Scrum Build', 'Sprint board'],
+    ['Weekly Reviews', 'Mentor scoring'],
+    ['Completed', 'Sign-off & close'],
+  ]
+  const pos = steps.map((_, i) => [i % 2 === 0 ? 30 : 290, 20 + i * 64])
+  return (
+    <svg viewBox="0 0 520 350" className={className} role="img" aria-label="Illustration of the complete project workflow: project shelf, allocation, SRS, Scrum build, weekly reviews and completion">
+      <defs>
+        <linearGradient id="pw-node" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#e11d48" /><stop offset="1" stopColor="#d97706" /></linearGradient>
+        <filter id="pw-shadow" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="8" floodColor="#1a050a" floodOpacity=".3" /></filter>
+      </defs>
+      {/* connecting path */}
+      <path d={`M${pos[0][0] + 24} ${pos[0][1] + 24} ${pos.slice(1).map(([x, y], i) => `C ${pos[i][0] + 24} ${y + 24}, ${x + 24} ${pos[i][1] + 24}, ${x + 24} ${y + 24}`).join(' ')}`}
+        fill="none" stroke="#fda4af" strokeOpacity=".55" strokeWidth="3" strokeDasharray="2 7" strokeLinecap="round" className="ai-link" />
+      {steps.map(([title, sub], i) => {
+        const [x, y] = pos[i]
+        const last = i === steps.length - 1
+        return (
+          <g key={title} filter="url(#pw-shadow)">
+            <rect x={x} y={y} width="200" height="48" rx="14" fill="#fff" />
+            <circle cx={x + 24} cy={y + 24} r="16" fill={last ? '#16a34a' : 'url(#pw-node)'} />
+            {last
+              ? <path d={`m${x + 17} ${y + 24} 5 5 9-10`} fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+              : <text x={x + 24} y={y + 29} textAnchor="middle" fontFamily="Inter, system-ui, sans-serif" fontSize="14" fontWeight="700" fill="#fff">{i + 1}</text>}
+            <text x={x + 50} y={y + 21} fontFamily="Inter, system-ui, sans-serif" fontSize="13.5" fontWeight="700" fill="#4f1524">{title}</text>
+            <text x={x + 50} y={y + 37} fontFamily="Inter, system-ui, sans-serif" fontSize="11" fill="#9f1239" opacity=".8">{sub}</text>
+          </g>
+        )
+      })}
     </svg>
   )
 }

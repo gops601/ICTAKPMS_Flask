@@ -38,8 +38,7 @@ def run(call, admin_email, admin_password, tag="x"):
     assert batch["domain"]["id"] == dom["id"]
 
     # 5. Domain Lead logs in
-    lead = ok(5, call("POST", "/api/admin/users", admin, {"role": "domain_lead", "name": "Flow Lead", "email": f"lead.{tag}@flow.test", "password": pw}))
-    ok(5, call("PUT", f"/api/domains/{dom['id']}/leads", admin, {"user_ids": [lead["id"]]}))
+    lead = ok(5, call("POST", "/api/admin/users", admin, {"role": "domain_lead", "name": "Flow Lead", "email": f"lead.{tag}@flow.test", "password": pw, "domain_ids": [dom["id"]]}))  # a lead is created with their domain
     lead_t, _ = login(f"lead.{tag}@flow.test", pw)
     # 6. Domain Lead adds a problem statement
     ps = ok(6, call("POST", "/api/problem-statements", lead_t, {"ps_code": f"FLOW-{tag}", "title": "Smart Attendance", "domain_id": dom["id"],
@@ -48,7 +47,8 @@ def run(call, admin_email, admin_password, tag="x"):
     ok(7, call("POST", "/api/admin/users", admin, {"role": "mentor", "name": "Flow Mentor", "email": f"mentor.{tag}@flow.test", "password": pw, "domain_id": dom["id"]}))
     mentors = ok(7, call("GET", "/api/mentors", lead_t))
     mentor = next(m for m in mentors if m["email"] == f"mentor.{tag}@flow.test")
-    ok(7, call("POST", f"/api/batches/{batch['id']}/mentors", lead_t, {"mentor_id": mentor["id"]}))
+    # the mentor was created under the batch's domain, so they are on the batch automatically (no manual step)
+    assert mentor["id"] in {m["id"] for m in ok(7, call("GET", f"/api/batches/{batch['id']}/mentors", lead_t))}
     stu = ok(7, call("POST", "/api/students", admin, {"name": "Flow Student", "email": f"stu.{tag}@flow.test", "registration_no": f"R-{tag}", "batch_id": batch["id"]}))
     # 8. Domain Lead allocates the project to the student
     projects = ok(8, call("POST", "/api/project-allocation", lead_t, {"batch_id": batch["id"], "items": [{"problem_statement_id": ps["id"], "student_ids": [stu["id"]]}]}))

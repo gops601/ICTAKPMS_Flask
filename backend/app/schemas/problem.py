@@ -50,9 +50,10 @@ def file_to_dict(link):
 
 def ps_to_dict(ps, detail=False, can_edit=False):
     out = {"id": ps.id, "ps_code": ps.ps_code, "title": ps.title, "difficulty": ps.difficulty, "status": ps.status,
-           "source_type": ps.source_type, "industry": ps.industry,
+           "source_type": ps.source_type, "industry": ps.industry, "approval_status": ps.approval_status,
            "domain": {"id": ps.domain.id, "name": ps.domain.name},
-           "subdomain": {"id": ps.subdomain.id, "name": ps.subdomain.name} if ps.subdomain else None, "estimated_duration": ps.estimated_duration,
+           "subdomain": {"id": ps.subdomain.id, "name": ps.subdomain.name} if ps.subdomain else None,
+           "proposed_by": {"id": ps.proposer.id, "name": ps.proposer.user.name} if ps.proposer else None, "estimated_duration": ps.estimated_duration,
            "created_at": ps.created_at.isoformat(), "dataset_count": len(ps.datasets),
            "document_count": len(ps.documents)}
     if detail:
@@ -60,6 +61,7 @@ def ps_to_dict(ps, detail=False, can_edit=False):
                   "functional_requirements", "non_functional_requirements", "suggested_technologies",
                   "dataset_info", "required_skills"):
             out[f] = getattr(ps, f)
+        out["data_collection"] = ps.data_collection or []
         out["datasets"] = [file_to_dict(d) for d in ps.datasets]
         out["documents"] = [file_to_dict(d) for d in ps.documents]
         out["can_edit"] = can_edit

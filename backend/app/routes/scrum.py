@@ -26,6 +26,7 @@ class TaskCreateSchema(_Base):
     priority = fields.String()
     status = fields.String()
     assigned_student_id = fields.Integer(allow_none=True)
+    assigned_student_ids = fields.List(fields.Integer())
     start_date = fields.String(allow_none=True)
     due_date = fields.String(allow_none=True)
 
@@ -35,6 +36,7 @@ class TaskUpdateSchema(_Base):
     description = fields.String(allow_none=True)
     priority = fields.String()
     assigned_student_id = fields.Integer(allow_none=True)
+    assigned_student_ids = fields.List(fields.Integer())
     start_date = fields.String(allow_none=True)
     due_date = fields.String(allow_none=True)
     version = fields.Integer()

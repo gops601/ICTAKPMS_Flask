@@ -2,7 +2,8 @@ from flask import request
 from flask_smorest import Blueprint
 
 from app.extensions import db
-from app.models import BatchMentor, Mentor, Project, ProjectStudent, Student, User
+from app.services.domain_sync_service import mentor_in_domains
+from app.models import BatchMentor, Mentor, Project, ProjectMentor, ProjectStudent, Student, User
 from app.permissions import current_user, roles_required
 from app.permissions.scope import lead_domain_ids, scoped_batches
 from app.schemas.org import CredentialsSchema, StudentCreateSchema, mentor_to_dict, student_to_dict
@@ -84,9 +85,11 @@ def list_mentors():
     q = db.select(Mentor).join(User, User.id == Mentor.user_id)
     if user.role_name == "domain_lead":
         # A lead sees mentors of their own domain(s) plus mentors not yet tied to any domain.
-        q = q.where(db.or_(Mentor.domain_id.in_(lead_domain_ids(user) or {-1}), Mentor.domain_id.is_(None)))
+        q = q.where(db.or_(mentor_in_domains(lead_domain_ids(user)), Mentor.domain_id.is_(None)))
     if a.get("domain_id", type=int):
-        q = q.where(Mentor.domain_id == a.get("domain_id", type=int))
+        q = q.where(mentor_in_domains([a.get("domain_id", type=int)]))
+    if a.get("for_domain", type=int):  # eligible for a batch of this domain: its own mentors (leads included) + mentors not tied to a domain
+        q = q.where(db.or_(mentor_in_domains([a.get("for_domain", type=int)]), Mentor.domain_id.is_(None)))
     if a.get("mentor_type") in ("internal", "industry"):
         q = q.where(Mentor.mentor_type == a["mentor_type"])
     if a.get("q"):
@@ -105,7 +108,8 @@ def list_mentors():
 
 def _workload(mentor_id):
     """Projects overseen via a per-project override, or via an active batch assignment without an override."""
-    via_override = db.session.query(Project.id).filter(Project.mentor_id == mentor_id)
+    via_override = db.session.query(Project.id).filter(db.or_(Project.mentor_id == mentor_id,
+                                                              Project.id.in_(db.select(ProjectMentor.project_id).where(ProjectMentor.mentor_id == mentor_id))))
     via_batch = (db.session.query(Project.id)
                  .join(BatchMentor, db.and_(BatchMentor.batch_id == Project.batch_id, BatchMentor.is_active.is_(True)))
                  .filter(BatchMentor.mentor_id == mentor_id, Project.mentor_id.is_(None)))

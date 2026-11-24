@@ -9,6 +9,7 @@ import Pagination from '../../components/Pagination'
 import StatusBadge from '../../components/StatusBadge'
 import Modal from '../../components/Modal'
 import Alert from '../../components/Alert'
+import DataCollectionTable from '../../components/DataCollectionTable'
 
 const TONE = { pending: 'orange', approved: 'green', rejected: 'red', withdrawn: 'grey' }
 
@@ -46,7 +47,10 @@ export default function ProposalApprovals() {
         </div>
         <Alert>{error || (!decision && actionError)}</Alert>
         <DataTable loading={loading} rows={items} empty="Nothing to review." columns={[
-          { key: 'title', header: 'Proposal', render: (p) => <div><div className="font-medium">{p.title}</div>{p.summary && <div className="line-clamp-2 text-xs text-slate-500">{p.summary}</div>}</div> },
+          { key: 'title', header: 'Proposal', render: (p) => <div><div className="font-medium">{p.title}</div>{p.summary && <div className="line-clamp-2 text-xs text-slate-500">{p.summary}</div>}{p.subdomain && <div className="text-xs text-slate-500">Subdomain: {p.subdomain.name}</div>}
+            {p.datasets.length > 0 && <ul className="mt-1 text-xs" aria-label={`Datasets of ${p.title}`}>{p.datasets.map((ds) => <li key={ds.id}><button className="text-brand underline" onClick={() => proposalService.downloadDataset(p, ds).catch((e) => setActionError(errorMessage(e, 'Download failed')))}>{ds.name}</button></li>)}</ul>}
+            {p.data_collection?.length > 0 && <details className="mt-1 text-xs"><summary className="cursor-pointer text-brand">Data collection ({p.data_collection.length} dataset(s))</summary><div className="mt-2"><DataCollectionTable rows={p.data_collection} title={`Data collection – ${p.title}`} /></div></details>}
+            {p.shelf && <div className="text-xs font-medium text-green-700">On the Project Shelf as {p.shelf.ps_code}</div>}</div> },
           { key: 'student', header: 'Student', render: (p) => <div>{p.student.name}<div className="text-xs text-slate-500">{p.student.registration_no} · {p.student.batch.code}</div></div> },
           { key: 'status', header: 'Status', render: (p) => <StatusBadge tone={TONE[p.status]}>{p.status}</StatusBadge> },
           { key: 'actions', header: 'Actions', render: (p) => (
@@ -64,6 +68,7 @@ export default function ProposalApprovals() {
       {decision && (
         <Modal title={`${decision.kind === 'approve' ? 'Approve' : 'Reject'} “${decision.proposal.title}”`} onClose={() => setDecision(null)}>
           <Alert>{actionError}</Alert>
+          {decision.kind === 'approve' && <p className="mb-3 text-sm text-slate-600">Approving marks the project as approved on the Project Shelf and <b>starts it for the student with you as mentor</b>, so they can begin the SRS.</p>}
           <label htmlFor="pr-remarks" className="label">Remarks{decision.kind === 'reject' ? ' *' : ' (optional)'}</label>
           <textarea id="pr-remarks" className="input min-h-[90px]" value={remarks} onChange={(e) => setRemarks(e.target.value)} />
           <div className="mt-4 flex justify-end gap-2">

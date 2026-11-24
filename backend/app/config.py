@@ -30,7 +30,7 @@ class Config:
     RESET_TOKEN_MINUTES = int(os.getenv("RESET_TOKEN_MINUTES", "30"))
     FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
-    API_TITLE = "ICTAKPMS API"
+    API_TITLE = "ICTAK API"
     API_VERSION = "v1"
     OPENAPI_VERSION = "3.0.3"
     OPENAPI_URL_PREFIX = "/api"

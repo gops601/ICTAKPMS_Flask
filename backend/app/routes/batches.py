@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from flask_smorest import Blueprint
 
 from app.extensions import db
-from app.models import Batch, BatchMentor, Mentor, Student
+from app.models import Batch, BatchMentor, Mentor, Student, User
 from app.permissions import current_user, roles_required
 from app.permissions.scope import ensure_batch_access, scoped_batches
 from app.schemas.org import BatchSchema, BatchUpdateSchema, ProjectDatesSchema, StatusSchema, batch_to_dict, mentor_to_dict
@@ -19,10 +19,19 @@ ALL = ("admin", "domain_lead", "mentor", "student")
 
 
 def _notify_leads(batch):
-    from app.services.notification_service import domain_lead_user_ids, notify
+    from app.services.notification_service import domain_lead_user_ids, domain_mentor_user_ids, notify
     notify(domain_lead_user_ids(batch.domain_id), "batch_assigned", "Batch assigned to your domain",
            f"Batch {batch.code} – {batch.name} was assigned to {batch.domain.name}. "
            "Please set the project start and end dates for this batch.", f"/lead/batches/{batch.id}")
+    notify(domain_mentor_user_ids(batch.domain_id), "batch_in_domain", "New batch in your domain",
+           f"Batch {batch.code} – {batch.name} was added to {batch.domain.name}. The domain lead will assign mentors to it.", None)
+
+
+def _sync_domain(batch):
+    """A batch in a domain automatically gets that domain's mentors; admins are warned if the domain has no lead."""
+    from app.services import domain_sync_service
+    domain_sync_service.auto_assign_mentors(batch, current_user())
+    domain_sync_service.warn_admins_if_no_lead(batch.domain_id, f"Batch {batch.code}")
 
 
 def _student_counts(ids):
@@ -64,6 +73,7 @@ def create_batch(data):
     batch = org_service.create_batch(data)
     audit(current_user().id, "batch.create", "batch", batch.id, {"code": batch.code})
     _notify_leads(batch)
+    _sync_domain(batch)
     db.session.commit()
     return ok(batch_to_dict(batch, 0), "Batch created", 201)
 
@@ -87,6 +97,7 @@ def update_batch(data, batch_id):
     audit(current_user().id, "batch.update", "batch", batch.id)
     if batch.domain_id != old_domain:
         _notify_leads(batch)
+        _sync_domain(batch)
     db.session.commit()
     return ok(batch_to_dict(batch, org_service.batch_student_count(batch.id)))
 
@@ -166,6 +177,25 @@ def assign_mentor(data, batch_id):
     audit(user.id, "batch.mentor_assign", "batch", batch.id, data)
     db.session.commit()
     return ok(_batch_mentors(batch), "Mentor assigned", 201)
+
+
+@bp.post("/<int:batch_id>/mentors/assign-domain")
+@bp.doc(security=SEC, description="Assign every active mentor of the batch's domain who is not on the batch yet.")
+@roles_required(*MANAGERS)
+def assign_domain_mentors(batch_id):
+    user = current_user()
+    batch = ensure_batch_access(user, batch_id)
+    if not batch.domain_id:
+        raise AppError("The batch has no domain assigned", 409)
+    on_batch = {l.mentor_id for l in db.session.query(BatchMentor).filter_by(batch_id=batch.id, is_active=True)}
+    pool = (db.session.query(Mentor).join(User, User.id == Mentor.user_id)
+            .filter(Mentor.domain_id == batch.domain_id, User.is_active.is_(True)).all())
+    added = [m for m in pool if m.id not in on_batch]
+    for m in added:
+        project_service.assign_batch_mentor(batch, m, user)
+    audit(user.id, "batch.mentor_assign_domain", "batch", batch.id, {"assigned": [m.id for m in added]})
+    db.session.commit()
+    return ok(_batch_mentors(batch), f"{len(added)} mentor(s) assigned")
 
 
 @bp.delete("/<int:batch_id>/mentors/<int:mentor_id>")

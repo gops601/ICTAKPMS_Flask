@@ -15,7 +15,8 @@ from app.permissions.scope import mentor_profile
 from app.services import lifecycle
 from app.services.fields import parse_date
 from app.services.notification_service import domain_lead_user_ids, notify
-from app.services.project_service import PROJECT_WEEKS, member_user_ids, mentor_user_ids
+from app.services.metrics_service import project_weeks
+from app.services.project_service import member_user_ids, mentor_user_ids
 from app.utils.audit import audit
 from app.utils.errors import AppError, Forbidden, NotFound
 
@@ -65,13 +66,14 @@ def overall_performance(project_id, include_scores=True):
     """Project-level performance across SUBMITTED reviews only. Students never receive scores (include_scores=False)."""
     reviews = (db.session.query(ProjectReview).filter_by(project_id=project_id, status="submitted")
                .order_by(ProjectReview.week_no).all())
+    weeks = project_weeks(db.session.get(Project, project_id))
     if not include_scores:
-        return {"reviews_submitted": len(reviews), "reviews_total": PROJECT_WEEKS}
+        return {"reviews_submitted": len(reviews), "reviews_total": weeks}
     rows = [{"week_no": r.week_no, **summarize(r)} for r in reviews]
     total_max = sum(Decimal(str(x["total_max"])) for x in rows)
     obtained = sum(Decimal(str(x["total_obtained"])) for x in rows)
     return {
-        "reviews_submitted": len(rows), "reviews_total": PROJECT_WEEKS, "reviews": rows,
+        "reviews_submitted": len(rows), "reviews_total": weeks, "reviews": rows,
         "total_obtained": _f(obtained), "total_max": _f(total_max),
         "percentage": _f((obtained * 100 / total_max).quantize(CENT, rounding=ROUND_HALF_UP)) if total_max else 0.0,
         "average_percentage": round(sum(x["percentage"] for x in rows) / len(rows), 2) if rows else 0.0,
@@ -87,7 +89,7 @@ def week_gate(project, week_no):
     if week_no == 1 and project.stage == "allocated":
         return "The student has not started SRS preparation yet."
     if week_no > 1 and order < lifecycle.ORDER["implementation"]:
-        return "Weeks 2–4 can be evaluated once implementation has started (SRS approved)."
+        return f"Weeks 2–{project_weeks(project)} can be evaluated once implementation has started (SRS approved)."
     return None
 
 
@@ -100,7 +102,7 @@ def is_assigned_mentor(user, project):
 def review_permissions(user, review):
     project = db.session.get(Project, review.project_id)
     gate = week_gate(project, review.week_no)
-    assigned = user.role_name == "mentor" and is_assigned_mentor(user, project)
+    assigned = is_assigned_mentor(user, project)          # a mentor, or a domain lead who is also a mentor of this project
     can_edit = assigned and review.status in EDITABLE and gate is None
     # Only mentors score. Mentors/admins can reopen for corrections and a Domain Lead (project already scoped by the
     # route) can revert a submitted score to the mentor for further updating.
@@ -145,7 +147,8 @@ def revert_note(review):
 
 def review_to_dict(review, role, viewer_student_id=None):
     """Full view for evaluators/monitors; students only ever receive submitted evaluations (and only their own remark)."""
-    base = {"id": review.id, "project_id": review.project_id, "week_no": review.week_no,
+    from app.services.metrics_service import phase_for
+    base = {"id": review.id, "project_id": review.project_id, "week_no": review.week_no, "phase": phase_for(review.week_no),
             "due_date": review.due_date.isoformat() if review.due_date else None,
             "is_overdue": bool(review.due_date and review.status != "submitted" and review.due_date < date.today()),
             "status": review.status, "status_label": STATUS_LABEL[review.status], "version": review.version}
@@ -270,7 +273,12 @@ def _apply_feedback(review, payload):
             # Scheduled dates move only through an approved request (services/review_schedule_service.py).
             raise AppError("The review date is already scheduled. Request a change – your Domain Lead must approve it.", 422,
                            {"review_date": "Already scheduled; request a change for approval"})
+        first_time = review.review_date is None and new_date is not None
         review.review_date = new_date
+        if first_time:        # students hear about the schedule as soon as the mentor sets it
+            project = db.session.get(Project, review.project_id)
+            notify(member_user_ids(project), "review_scheduled", f"Week {review.week_no} review scheduled",
+                   f"Your Week {review.week_no} review for “{project.title}” is scheduled for {new_date}.", "/student/reviews")
 
 
 def _apply_individual_max(review, payload):
@@ -329,7 +337,7 @@ def _prepare(review, user):
     """Common preconditions for writing to a review; returns the locked, refreshed review + project."""
     project = _lock(review.project_id)
     db.session.refresh(review, with_for_update=True)
-    if user.role_name != "mentor":
+    if user.role_name not in ("mentor", "domain_lead"):
         raise Forbidden("Only the project's mentor can evaluate")
     if not is_assigned_mentor(user, project):
         raise NotFound("Review not found")
@@ -407,9 +415,10 @@ def reopen(review, reason, user):
         raise AppError("A reason (at least 5 characters) is required to reopen a review", 422, {"reason": "Reason required"})
     project = _lock(review.project_id)
     db.session.refresh(review, with_for_update=True)
-    if user.role_name == "mentor":
-        if not is_assigned_mentor(user, project):
-            raise NotFound("Review not found")
+    if is_assigned_mentor(user, project):
+        pass
+    elif user.role_name == "mentor":
+        raise NotFound("Review not found")
     elif user.role_name not in ("admin", "domain_lead"):    # domain-lead scope was already enforced by the route
         raise Forbidden("Only the project's mentor, its Domain Lead or an administrator can reopen a review")
     if review.status != "submitted":
@@ -425,7 +434,7 @@ def reopen(review, reason, user):
     db.session.flush()
     notify(member_user_ids(project), "review_reopened", f"Week {review.week_no} review under revision",
            "This evaluation was reopened for correction. You'll be notified when it is resubmitted.", "/student/reviews")
-    if user.role_name != "mentor":   # tell the mentor(s) their score was sent back, with the reason
+    if not is_assigned_mentor(user, project):   # tell the mentor(s) their score was sent back, with the reason
         who = "Your Domain Lead" if user.role_name == "domain_lead" else "An administrator"
         notify(mentor_user_ids(project), "review_reverted", f"Week {review.week_no} score reverted for update",
                f"{who} ({user.name}) reverted “{project.title}” Week {review.week_no} to you. Reason: {reason}", f"/reviews/{review.id}")
@@ -447,9 +456,10 @@ def final_signoff(project, remarks, user):
     if len(remarks) < 3:
         raise AppError("Final evaluation remarks are required", 422, {"remarks": "Remarks required"})
     project = _lock(project.id)
-    if user.role_name == "mentor":
-        if not is_assigned_mentor(user, project):
-            raise NotFound("Project not found")
+    if is_assigned_mentor(user, project):
+        pass
+    elif user.role_name == "mentor":
+        raise NotFound("Project not found")
     elif user.role_name != "admin":
         raise Forbidden("Only the project's mentor or an administrator can sign off the final evaluation")
     if project.stage != "final_evaluation":
@@ -457,8 +467,8 @@ def final_signoff(project, remarks, user):
     if project.final_signed_off_by:
         raise AppError("The final evaluation was already signed off", 409)
     submitted = db.session.query(ProjectReview).filter_by(project_id=project.id, status="submitted").count()
-    if submitted < PROJECT_WEEKS:
-        raise AppError("All four weekly reviews must be submitted first", 409)
+    if submitted < project_weeks(project):
+        raise AppError(f"All {'three' if project_weeks(project) == 3 else 'four'} weekly reviews must be submitted first", 409)
     project.final_signed_off_by, project.final_remarks = user.id, remarks
     lifecycle.log_activity(project.id, user.id, "final.signed_off", {})
     audit(user.id, "project.final_signoff", "project", project.id)

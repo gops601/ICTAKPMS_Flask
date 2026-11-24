@@ -25,6 +25,7 @@ function MentorsTab({ batch, canManage }) {
   const [pick, setPick] = useState('')
   const [busy, setBusy] = useState(false)
   const [dialogError, setDialogError] = useState('')
+  const [notice, setNotice] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -35,7 +36,7 @@ function MentorsTab({ batch, canManage }) {
   const open = async (type, mentor) => {
     setDialog({ type, mentor }); setPick(''); setDialogError('')
     if (type !== 'remove') {
-      try { setPool((await userService.mentors({ per_page: 100 })).items.filter((m) => m.is_active)) } catch (e) { setDialogError(errorMessage(e)) }
+      try { setPool((await userService.mentors({ per_page: 100, for_domain: batch.domain?.id })).items.filter((m) => m.is_active)) } catch (e) { setDialogError(errorMessage(e)) }
     }
   }
   const run = async () => {
@@ -47,13 +48,26 @@ function MentorsTab({ batch, canManage }) {
       setDialog(null); load()
     } catch (e) { setDialogError(errorMessage(e)) } finally { setBusy(false) }
   }
+  const assignAll = async () => {
+    setBusy(true); setError(''); setNotice('')
+    try {
+      const list = await batchMentorService.assignDomain(batch.id)
+      setNotice(`Mentors of ${batch.domain?.name || 'the domain'} are now on this batch (${list.length} in total).`); load()
+    } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
+  }
   const assignedIds = new Set(mentors.map((m) => m.id))
   const choices = pool.filter((m) => !assignedIds.has(m.id))
 
   return (
     <div className="space-y-3">
       <Alert>{error}</Alert>
-      {canManage && <div><button className="btn-primary" onClick={() => open('assign')}><UserPlus className="h-4 w-4" />Assign mentor</button></div>}
+      {canManage && (
+        <div className="flex flex-wrap gap-2">
+          <button className="btn-primary" onClick={() => open('assign')}><UserPlus className="h-4 w-4" />Assign mentor</button>
+          <button className="btn-secondary" disabled={busy} onClick={assignAll}>Assign all {batch.domain?.name || 'domain'} mentors</button>
+        </div>
+      )}
+      {notice && <Alert type="success">{notice}</Alert>}
       <DataTable loading={loading} rows={mentors} empty="No mentors assigned to this batch yet." columns={[
         { key: 'name', header: 'Name' }, { key: 'email', header: 'Email' },
         { key: 'designation', header: 'Designation', render: (m) => m.designation || '—' },
@@ -79,6 +93,7 @@ function MentorsTab({ batch, canManage }) {
               <option value="">Select a mentor…</option>
               {choices.map((m) => <option key={m.id} value={m.id}>{m.name} ({m.project_count} projects)</option>)}
             </select>
+            <p className="text-xs text-slate-500">Mentors of {batch.domain?.name || 'this domain'} (and mentors not tied to a domain yet). Assign as many as the batch needs; each can allocate projects to its students.</p>
             {dialog.type === 'reassign' && <p className="text-xs text-slate-500">Projects with a mentor override move to the new mentor too.</p>}
           </div>
         </Modal>
@@ -156,7 +171,7 @@ export default function BatchDetail() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title={`${batch.code} – ${batch.name}`} subtitle={`${batch.ou.name} · ${batch.domain?.name || 'No domain'} · ${batch.student_count} students`}
+      <PageHeader title={`${batch.code} – ${batch.name}`} subtitle={`${batch.ou.name} · ${batch.domain?.name || 'No domain'} · ${batch.mode === 'offline' ? 'Offline (3 weeks)' : 'Online (4 weeks)'} · ${batch.student_count} students`}
         actions={<>
           <StatusBadge status={batch.status} />
           {canManage && <button className="btn-secondary" onClick={() => reportService.batchDetailed(batch.id).catch((e) => setError(errorMessage(e, 'Download failed')))}><Download className="h-4 w-4" />Detailed report</button>}

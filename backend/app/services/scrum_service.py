@@ -2,7 +2,7 @@
 from datetime import date
 
 from app.extensions import db
-from app.models import Project, ProjectStudent, ScrumBoard, ScrumTask, ScrumTaskComment, ScrumTaskHistory, Student
+from app.models import Project, ProjectStudent, ScrumBoard, ScrumTask, ScrumTaskAssignee, ScrumTaskComment, ScrumTaskHistory, Student
 from app.models.base import utcnow
 from app.models.scrum import TASK_PRIORITIES, TASK_STATUSES
 from app.permissions.scope import student_profile
@@ -24,6 +24,11 @@ def is_member(user, project):
     return bool(s and any(pm.student_id == s.id for pm in project.members))
 
 
+def _is_project_mentor(user, project):
+    from app.services.evaluation_service import is_assigned_mentor
+    return is_assigned_mentor(user, project)
+
+
 def board_permissions(user, project):
     """What the user may do on this project's board, with a human reason when editing is blocked."""
     unlocked = lifecycle.ORDER[project.stage] >= lifecycle.ORDER["srs_approved"]
@@ -35,12 +40,13 @@ def board_permissions(user, project):
         reason = "This project is completed; the board is read-only."
     role = user.role_name
     # Only the project's students and its mentors change the board; leads and admins are read-only.
-    editor = (role == "student" and is_member(user, project)) or role == "mentor"
+    as_mentor = role == "mentor" or (role == "domain_lead" and _is_project_mentor(user, project))   # a lead who mentors this project
+    editor = (role == "student" and is_member(user, project)) or as_mentor
     can_edit = editor and reason is None
-    if role in ("domain_lead", "admin"):
+    if role in ("domain_lead", "admin") and not as_mentor:
         reason = reason or "You have read-only access to this board."
     return {"can_create": can_edit, "can_edit": can_edit, "can_delete": can_edit, "can_move": can_edit,
-            "can_comment": role in ("student", "mentor", "admin"), "reason": None if can_edit else reason}
+            "can_comment": role in ("student", "mentor", "admin") or as_mentor, "reason": None if can_edit else reason}
 
 
 def _require(perms, key, user):
@@ -84,13 +90,47 @@ def _assignee_name(student_id):
     return s.user.name if s else None
 
 
-def _validate_assignee(project, student_id):
-    if student_id is None:
+def assignee_ids(task):
+    """Everyone the task is assigned to (several are allowed), in the order they were added."""
+    ids = [r[0] for r in db.session.query(ScrumTaskAssignee.student_id).filter_by(task_id=task.id).order_by(ScrumTaskAssignee.id)]
+    if task.assigned_student_id and task.assigned_student_id not in ids:
+        ids.insert(0, task.assigned_student_id)
+    return ids
+
+
+def _requested_assignees(project, data):
+    """The assignee list in a request (None = not mentioned). Accepts assigned_student_ids, or the older single id."""
+    if "assigned_student_ids" in data:
+        raw = data["assigned_student_ids"] or []
+    elif "assigned_student_id" in data:
+        raw = [data["assigned_student_id"]] if data["assigned_student_id"] else []
+    else:
         return None
-    ok = db.session.query(ProjectStudent).filter_by(project_id=project.id, student_id=student_id).first()
-    if not ok:
-        raise AppError("Tasks can only be assigned to members of this project", 422, {"assigned_student_id": "Not a project member"})
-    return student_id
+    ids = list(dict.fromkeys(raw))
+    members = {pm.student_id for pm in project.members}
+    if any(i not in members for i in ids):
+        raise AppError("Tasks can only be assigned to members of this project", 422,
+                       {"assigned_student_ids": "Not a project member", "assigned_student_id": "Not a project member"})
+    return ids
+
+
+def _set_assignees(task, ids, project, user, log=True):
+    old = assignee_ids(task)
+    if old == ids:
+        return
+    db.session.query(ScrumTaskAssignee).filter_by(task_id=task.id).delete(synchronize_session=False)
+    for i in ids:
+        db.session.add(ScrumTaskAssignee(task_id=task.id, student_id=i))
+    task.assigned_student_id = ids[0] if ids else None
+    if log:
+        _hist(task, user, "assigned", "assignee", ", ".join(_assignee_name(i) for i in old) or None,
+              ", ".join(_assignee_name(i) for i in ids) or None)
+    db.session.flush()
+    db.session.expire(task, ["assignees"])
+    added = [i for i in ids if i not in old]
+    if added:
+        users = {s.user_id for s in db.session.query(Student).filter(Student.id.in_(added))} - {user.id}
+        notify(users, "task_assigned", "Task assigned to you", f"You were assigned “{task.title}” in “{project.title}”.", f"/scrum/{project.id}")
 
 
 def _clean(data, existing=None):
@@ -147,15 +187,16 @@ def create_task(project, data, user):
     status = data.get("status") or "backlog"
     if status not in TASK_STATUSES:
         raise AppError(f"Status must be one of: {', '.join(TASK_STATUSES)}", 422, {"status": "Invalid status"})
-    assignee = _validate_assignee(project, data.get("assigned_student_id"))
+    assignees = _requested_assignees(project, data) or []
     board = board_for(project)
-    task = ScrumTask(board_id=board.id, created_by=user.id, status=status, assigned_student_id=assignee,
+    task = ScrumTask(board_id=board.id, created_by=user.id, status=status,
                      position=_next_position(board.id, status), priority=clean.pop("priority", "medium"), **clean)
     if status == "completed":
         task.completed_at = utcnow()
     db.session.add(task)
     db.session.flush()
     _hist(task, user, "created", "status", None, status)
+    _set_assignees(task, assignees, project, user, log=False)
     lifecycle.log_activity(project.id, user.id, "task.created", {"task_id": task.id, "title": task.title})
     return task
 
@@ -168,11 +209,9 @@ def update_task(task, project, data, user, expected_version=None):
     if expected_version is not None and expected_version != task.version:
         raise AppError("This task was changed by someone else. Reload and try again.", 409)
     clean = _clean(data, existing=task)
-    if "assigned_student_id" in data:
-        new_assignee = _validate_assignee(project, data["assigned_student_id"])
-        if new_assignee != task.assigned_student_id:
-            _hist(task, user, "assigned", "assignee", _assignee_name(task.assigned_student_id), _assignee_name(new_assignee))
-            task.assigned_student_id = new_assignee
+    new_assignees = _requested_assignees(project, data)
+    if new_assignees is not None:
+        _set_assignees(task, new_assignees, project, user)
     for field, value in clean.items():
         old = getattr(task, field)
         if old != value:
@@ -248,6 +287,7 @@ def task_to_dict(task, comment_count=None):
     return {
         "id": task.id, "title": task.title, "description": task.description, "priority": task.priority,
         "status": task.status, "position": task.position, "version": task.version,
+        "assignees": [{"student_id": i, "name": _assignee_name(i)} for i in assignee_ids(task)],
         "assignee": {"student_id": task.assigned_student_id, "name": _assignee_name(task.assigned_student_id)} if task.assigned_student_id else None,
         "created_by": {"id": u.id, "name": u.name} if u else None,
         "start_date": task.start_date.isoformat() if task.start_date else None,

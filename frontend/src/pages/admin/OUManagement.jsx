@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Download, Pencil, Plus, Settings2 } from 'lucide-react'
+import { Download, Pencil, Plus, Settings2, Trash2 } from 'lucide-react'
 import { ouService, downloadFile } from '../../services/adminService'
 import { errorMessage, fieldErrors } from '../../services/api'
 import PageHeader from '../../components/PageHeader'
@@ -147,6 +147,7 @@ export default function OUManagement() {
   const [editing, setEditing] = useState(null) // null | 'new' | ou
   const [fieldsFor, setFieldsFor] = useState(null)
   const [toggle, setToggle] = useState(null)
+  const [deleting, setDeleting] = useState(null)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
@@ -185,12 +186,22 @@ export default function OUManagement() {
               <button className="btn-secondary" onClick={() => template(o, 'students', 'xlsx')}><Download className="h-4 w-4" />Student .xlsx</button>
               <button className="btn-secondary" onClick={() => template(o, 'students', 'csv')}><Download className="h-4 w-4" />Student .csv</button>
               <button className="btn-secondary" onClick={() => setToggle(o)}>{o.is_active ? 'Deactivate' : 'Activate'}</button>
+              <button className="btn-danger" aria-label={`Delete ${o.name}`} onClick={() => { setError(''); setDeleting(o) }}><Trash2 className="h-4 w-4" />Delete</button>
             </div>
           ) },
         ]} />
       </div>
       {editing && <OUFormModal ou={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
       {fieldsFor && <FieldsModal ou={fieldsFor} onClose={() => setFieldsFor(null)} />}
+      {deleting && (
+        <ConfirmDialog danger confirmLabel="Delete permanently" busy={busy} onCancel={() => setDeleting(null)}
+          message={`Permanently delete ${deleting.name} (${deleting.code}) and its registration fields? This cannot be undone. An OU that has batches cannot be deleted (deactivate it instead).`}
+          onConfirm={async () => {
+            setBusy(true)
+            try { await ouService.remove(deleting.id); setDeleting(null); load() }
+            catch (e) { setError(errorMessage(e)); setDeleting(null) } finally { setBusy(false) }
+          }} />
+      )}
       {toggle && (
         <ConfirmDialog
           message={toggle.is_active ? `Deactivate ${toggle.name}? No new batches can be created under it.` : `Activate ${toggle.name}?`}

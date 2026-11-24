@@ -15,7 +15,7 @@ export default function BatchForm() {
   const [ous, setOus] = useState([])
   const [domains, setDomains] = useState([])
   const [fields, setFields] = useState([])
-  const [form, setForm] = useState({ code: '', name: '', ou_id: '', domain_id: '', start_date: '', end_date: '', details: {} })
+  const [form, setForm] = useState({ code: '', name: '', ou_id: '', domain_id: '', mode: '', start_date: '', end_date: '', details: {} })
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -28,7 +28,7 @@ export default function BatchForm() {
         setOus(o); setDomains(d)
         if (editing) {
           const b = await batchService.get(id)
-          setForm({ code: b.code, name: b.name, ou_id: b.ou.id, domain_id: b.domain?.id || '', start_date: b.start_date || '', end_date: b.end_date || '', details: b.details })
+          setForm({ code: b.code, name: b.name, ou_id: b.ou.id, domain_id: b.domain?.id || '', mode: b.mode || 'online', start_date: b.start_date || '', end_date: b.end_date || '', details: b.details })
         }
       } catch (e) { setError(errorMessage(e)) } finally { setLoading(false) }
     })()
@@ -46,7 +46,7 @@ export default function BatchForm() {
   const submit = async (e) => {
     e.preventDefault(); setBusy(true); setError(''); setErrs({})
     const body = {
-      name: form.name, domain_id: Number(form.domain_id),
+      name: form.name, domain_id: Number(form.domain_id), mode: form.mode,
       start_date: form.start_date || null, end_date: form.end_date || null,
       details: Object.fromEntries(fields.map((f) => [f.field_key, form.details[f.field_key] ?? ''])),
     }
@@ -80,6 +80,16 @@ export default function BatchForm() {
               <option value="">Select domain…</option>{domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
             {err('domain')}{err('domain_id')}
+          </div>
+          <div>
+            <label htmlFor="mode" className="label">Batch mode *</label>
+            <select id="mode" className="input" required value={form.mode} onChange={set('mode')}>
+              <option value="">Select online or offline…</option>
+              <option value="online">Online – 4 weeks</option>
+              <option value="offline">Offline – 3 weeks</option>
+            </select>
+            {err('mode')}
+            <p className="mt-1 text-xs text-slate-500">Week 1 is SRS submission and datasets, then implementation: 2 weeks offline, 3 weeks online. It applies to every project and student of the batch.</p>
           </div>
           <div>
             <label htmlFor="code" className="label">Batch ID</label>

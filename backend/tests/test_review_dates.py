@@ -212,3 +212,28 @@ def test_lead_dashboard_counts_pending_requests(client, world, scheduled):      
     assert count() == 1
     decide(client, world, req["id"], "approve")
     assert count() == 0
+
+
+# ================================================ the mentor's button and the students' notifications
+def test_mentor_can_request_a_date_change_whenever_the_review_is_open(client, world, scheduled):   # noqa: F811
+    d = client.get(f"/api/reviews/{scheduled}", headers=world["H"]["m1"]).get_json()["data"]
+    assert d["permissions"]["can_request_date_change"] is True
+    assert ask(client, world, scheduled, D(14)).status_code == 201
+    d = client.get(f"/api/reviews/{scheduled}", headers=world["H"]["m1"]).get_json()["data"]
+    assert d["permissions"]["can_request_date_change"] is False                 # one request at a time
+    for who in ("la", "admin"):
+        assert client.get(f"/api/reviews/{scheduled}", headers=world["H"][who]).get_json()["data"]["permissions"]["can_request_date_change"] is False
+
+
+def test_students_are_told_when_a_date_is_first_set_and_when_it_moves(client, world):   # noqa: F811
+    rv = rid(world["main"], 1)
+    db.session.query(Notification).delete()
+    db.session.commit()
+    assert schedule(client, world, rv, D(10)).status_code == 200
+    mine = lambda t: [n for n in db.session.query(Notification).filter_by(user_id=world["s1u"].id, type=t)]   # noqa: E731
+    assert len(mine("review_scheduled")) == 1 and D(10) in mine("review_scheduled")[0].message
+    req = ask(client, world, rv, D(14)).get_json()["data"]["id"]
+    assert not mine("review_rescheduled")                                       # nothing moves until it is approved
+    assert decide(client, world, req, "approve").status_code == 200
+    moved = mine("review_rescheduled")
+    assert len(moved) == 1 and D(10) in moved[0].message and D(14) in moved[0].message

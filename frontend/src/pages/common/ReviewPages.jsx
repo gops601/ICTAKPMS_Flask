@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext'
 import MyProjectGate from '../../components/MyProjectGate'
 import ReviewDetail from '../../components/ReviewDetail'
 import ReviewEditor from '../../components/ReviewEditor'
+import DateChangeButton from '../../components/DateChangeButton'
 import PageHeader from '../../components/PageHeader'
 import DataTable from '../../components/DataTable'
 import Pagination from '../../components/Pagination'
@@ -20,6 +21,7 @@ import BatchFilter from '../../components/BatchFilter'
 
 const fmtNum = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''))
 const TONE = { submitted: 'green', draft: 'orange', reopened: 'red', pending: 'grey' }
+const WORDS = { 3: 'three', 4: 'four' }
 const fmtTime = (iso) => new Date(`${iso}Z`).toLocaleString()
 
 // ---------------------------------------------------------------- single review
@@ -61,6 +63,7 @@ export function ReviewPage() {
         subtitle={`Due ${review.due_date || '—'}${review.review_date ? ` · Review date ${review.review_date}` : ''}`}
         actions={<>
           <StatusBadge tone={TONE[review.status]}>{review.status_label}</StatusBadge>
+          {!perms.can_edit && <DateChangeButton review={review} onDone={load} />}
           {perms.can_reopen && <button className="btn-secondary" onClick={() => { setReopenError(''); setReopening(true) }}>{isLead ? 'Revert to mentor' : 'Reopen to correct'}</button>}
           <Link to={`/reviews/project/${review.project_id}`} className="btn-secondary">All reviews</Link>
         </>} />
@@ -142,7 +145,7 @@ function FinalPanel({ projectId, data, onDone }) {
       ) : f.can_sign_off ? (
         <form onSubmit={sign} className="space-y-3">
           <Alert>{error}</Alert>
-          <p className="text-sm text-slate-600">All four reviews are submitted. Sign off the final evaluation, then move the project to Completed from the project page.</p>
+          <p className="text-sm text-slate-600">All {WORDS[data.overall.reviews_total] || data.overall.reviews_total} reviews are submitted. Sign off the final evaluation, then move the project to Completed from the project page.</p>
           <label htmlFor="final-remarks" className="label">Final remarks *</label>
           <textarea id="final-remarks" className="input" rows={3} value={remarks} onChange={(e) => setRemarks(e.target.value)} />
           <button className="btn-primary" disabled={busy}>{busy ? 'Signing off…' : 'Sign off final evaluation'}</button>
@@ -151,7 +154,7 @@ function FinalPanel({ projectId, data, onDone }) {
         <p className="text-sm text-slate-500">
           {data.project.stage === 'final_evaluation' ? 'Waiting for the mentor to sign off.'
             : f.all_reviews_submitted ? 'All reviews are submitted. The project must be moved to the Final Evaluation stage before sign-off.'
-              : 'Available once all four weekly reviews are submitted and the project reaches the Final Evaluation stage.'}
+              : `Available once all ${WORDS[data.overall.reviews_total] || data.overall.reviews_total} weekly reviews are submitted and the project reaches the Final Evaluation stage.`}
         </p>
       )}
     </section>
@@ -188,13 +191,16 @@ export function ProjectReviewsView({ projectId }) {
         <section key={r.id} className="card space-y-3" aria-label={`Week ${r.week_no}`}>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <h2 className="font-semibold text-slate-900">Week {r.week_no}</h2>
+              <h2 className="font-semibold text-slate-900">Week {r.week_no}{r.phase ? <span className="ml-2 text-xs font-normal text-slate-500">{r.phase}</span> : null}</h2>
               <StatusBadge tone={TONE[r.status]}>{r.status_label}</StatusBadge>
               {r.is_overdue && <StatusBadge tone="red">Overdue</StatusBadge>}
               <span className="text-xs text-slate-500">Due {r.due_date || '—'}</span>
               {r.review_date && r.status !== 'submitted' && <span className="text-xs font-medium text-brand">Scheduled {r.review_date}</span>}
             </div>
-            {!student && <Link to={`/reviews/${r.id}`} className="btn-secondary">{r.permissions.can_edit ? 'Evaluate' : 'Open'}</Link>}
+            {!student && <div className="flex flex-wrap gap-2">
+              <DateChangeButton review={r} onDone={load} />
+              <Link to={`/reviews/${r.id}`} className="btn-secondary">{r.permissions.can_edit ? 'Evaluate' : 'Open'}</Link>
+            </div>}
           </div>
           {r.visible && r.status === 'submitted' && student && <ReviewDetail review={r} />}
           {r.visible && r.status !== 'submitted' && !student && (
@@ -228,7 +234,7 @@ export function EvaluationQueuePage() {
   const [overdue, setOverdue] = useState(false)
   const [batchId, setBatchId] = useState('')
   const { items, meta, loading, error } = useList(reviewService.queue, { page, batch_id: batchId || undefined, week: week || undefined, overdue: overdue ? 1 : undefined })
-  const evaluator = user.role === 'mentor'
+  const evaluator = user.role === 'mentor' || Boolean(user.is_mentor)
   return (
     <div>
       <PageHeader title={evaluator ? 'Weekly Evaluations' : 'Review Monitoring'} subtitle="Reviews still to be completed, soonest due first." />

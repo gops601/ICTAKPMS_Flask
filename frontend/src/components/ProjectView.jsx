@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { AlertTriangle, History, Lock, RotateCcw } from 'lucide-react'
-import { batchMentorService, projectService, psService } from '../services/adminService'
+import { Link, useNavigate } from 'react-router-dom'
+import { AlertTriangle, History, Lock, RotateCcw, Trash2 } from 'lucide-react'
+import { projectService, psService } from '../services/adminService'
 import { errorMessage } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import Modal from './Modal'
@@ -12,6 +12,7 @@ import { ProgressBar, StageBadge } from './ProjectBadges'
 import GithubPanel from './GithubPanel'
 import FeedbackPanel from './FeedbackPanel'
 import ConfirmDialog from './ConfirmDialog'
+import ProjectMentorsModal from './ProjectMentorsModal'
 
 const STAGE_LABEL = {
   allocated: 'Project Allocated', srs_preparation: 'SRS Preparation', srs_submitted: 'SRS Submitted',
@@ -47,6 +48,7 @@ function describe(item) {
 /** Whole-project view used by every role; the API decides what each role may do. */
 export default function ProjectView({ id }) {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const role = user.role
   const canManage = role === 'admin' || role === 'domain_lead'
   const canClose = role === 'domain_lead' || role === 'admin'
@@ -73,10 +75,7 @@ export default function ProjectView({ id }) {
     catch (e) { const msg = errorMessage(e); modal ? setModalError(msg) : setError(msg) } finally { setBusy(false) }
   }
 
-  const openMentor = async () => {
-    setForm({ mentor_id: project.mentor_override ? String(project.mentors[0].id) : '' }); setModalError(''); setModal('mentor')
-    try { setOptions(await batchMentorService.list(project.batch.id)) } catch (e) { setModalError(errorMessage(e)) }
-  }
+  const openMentor = () => setModal('mentor')
   const openProblem = async () => {
     setForm({ ps_id: '' }); setModalError(''); setModal('problem')
     try {
@@ -101,7 +100,9 @@ export default function ProjectView({ id }) {
         <div className="flex flex-wrap items-center gap-2">
           {project.is_delayed && <StatusBadge tone="red">Delayed</StatusBadge>}
           <StageBadge stage={project.stage} label={project.stage_label} />
+          {project.total_weeks && <StatusBadge tone="grey">{project.mode === 'offline' ? 'Offline' : 'Online'} · {project.total_weeks} weeks</StatusBadge>}
           {project.is_closed && <StatusBadge tone="grey"><span className="inline-flex items-center gap-1"><Lock className="h-3 w-3" />Closed</span></StatusBadge>}
+          {role === 'admin' && <button className="btn-danger" onClick={() => { setModalError(''); setModal('delete') }}><Trash2 className="h-4 w-4" />Delete</button>}
           {canClose && project.stage === 'completed' && !project.is_closed && (
             <button className="btn-primary" onClick={() => { setModalError(''); setModal('close') }}><Lock className="h-4 w-4" />Close project</button>
           )}
@@ -160,7 +161,7 @@ export default function ProjectView({ id }) {
           </div>
           {canManage && (
             <div className="flex flex-wrap gap-2">
-              <button className="btn-secondary" onClick={openMentor}>Assign mentor</button>
+              <button className="btn-secondary" onClick={openMentor}>Assign mentors</button>
               {canChangePs && <button className="btn-secondary" onClick={openProblem}>Change project</button>}
             </div>
           )}
@@ -193,17 +194,18 @@ export default function ProjectView({ id }) {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Weekly reviews & final evaluation</h2>
           <p className="mt-1 text-sm text-slate-500">Scores, feedback and the final sign-off required for completion.</p>
         </div>
-        <Link className="btn-secondary" to={`/reviews/project/${project.id}`}>{role === 'mentor' ? 'Evaluate' : 'View reviews'}</Link>
+        <Link className="btn-secondary" to={`/reviews/project/${project.id}`}>{role === 'mentor' || user?.is_mentor ? 'Evaluate' : 'View reviews'}</Link>
       </div>
 
       <GithubPanel projectId={project.id} />
 
       <div className="card">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">Weekly review schedule</h2>
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <ul className={`grid grid-cols-2 gap-3 ${project.reviews.length === 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-4'}`}>
           {project.reviews.map((r) => (
             <li key={r.week_no} className="rounded-lg border border-slate-200 p-3 text-sm">
               <div className="font-medium">Week {r.week_no}</div>
+              <div className="text-xs text-slate-500">{r.week_no === 1 ? 'SRS & datasets' : 'Implementation'}</div>
               <div className="text-xs text-slate-500">Due {fmtDate(r.due_date)}</div>
               <div className="mt-1"><StatusBadge status={r.status} /></div>
             </li>
@@ -211,7 +213,7 @@ export default function ProjectView({ id }) {
         </ul>
       </div>
 
-      <FeedbackPanel project={project} canSend={role === 'mentor'} />
+      <FeedbackPanel project={project} canSend={role === 'mentor' || Boolean(user?.is_mentor)} />
 
       <div className="card">
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500"><History className="h-4 w-4" />Activity timeline</h2>
@@ -226,6 +228,12 @@ export default function ProjectView({ id }) {
         </ol>
       </div>
 
+      {modal === 'delete' && (
+        <ConfirmDialog danger confirmLabel="Delete permanently" busy={busy}
+          message={`Permanently delete ${project.code || project.title}? Its reviews, Scrum board, SRS files and feedback are removed and cannot be recovered.`}
+          onConfirm={async () => { setBusy(true); try { await projectService.remove(project.id); navigate('/admin/projects', { replace: true }) } catch (e) { setError(errorMessage(e)); setModal(null) } finally { setBusy(false) } }}
+          onCancel={() => setModal(null)} />
+      )}
       {modal === 'close' && (
         <ConfirmDialog confirmLabel="Close project" busy={busy}
           message="Close this completed project? Everyone involved is notified. You can reopen it later if needed."
@@ -247,21 +255,7 @@ export default function ProjectView({ id }) {
           </div>
         </Modal>
       )}
-      {modal === 'mentor' && (
-        <Modal title="Assign mentor" onClose={() => setModal(null)}
-          footer={<><button className="btn-secondary" onClick={() => setModal(null)}>Cancel</button>
-            <button className="btn-primary" disabled={busy} onClick={() => act(() => projectService.setMentor(project.id, form.mentor_id ? Number(form.mentor_id) : null))}>Save</button></>}>
-          <div className="space-y-3">
-            <Alert>{modalError}</Alert>
-            <label htmlFor="pm" className="label">Mentor for this project</label>
-            <select id="pm" className="input" value={form.mentor_id} onChange={(e) => setForm({ mentor_id: e.target.value })}>
-              <option value="">Use the batch's mentors (no override)</option>
-              {options.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-            <p className="text-xs text-slate-500">Only mentors already assigned to batch {project.batch.code} can be chosen.</p>
-          </div>
-        </Modal>
-      )}
+      {modal === 'mentor' && <ProjectMentorsModal project={project} role={role} onClose={() => setModal(null)} onSaved={() => { setModal(null); load() }} />}
       {modal === 'problem' && (
         <Modal title="Change project" onClose={() => setModal(null)}
           footer={<><button className="btn-secondary" onClick={() => setModal(null)}>Cancel</button>

@@ -57,6 +57,16 @@ def update_ou(data, ou_id):
     return ok(ou_to_dict(ou, True))
 
 
+@bp.delete("/<int:ou_id>")
+@bp.doc(security=SEC, description="Admin only. Refused (409) while the OU has batches.")
+@roles_required("admin")
+def delete_ou(ou_id):
+    info = org_service.delete_ou(org_service.get_ou(ou_id))
+    audit(current_user().id, "ou.delete", "ou", ou_id, info)
+    db.session.commit()
+    return ok(message=f"OU {info['code']} was deleted")
+
+
 @bp.patch("/<int:ou_id>/active")
 @bp.doc(security=SEC)
 @bp.arguments(ActiveSchema)

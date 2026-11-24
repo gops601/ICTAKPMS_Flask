@@ -164,7 +164,7 @@ export default function StudentManagement() {
           { key: 'registration_no', header: 'Reg. no', sortKey: 'registration_no' },
           { key: 'batch', header: 'Batch', render: (s) => s.batch.code },
           { key: 'phone', header: 'Phone', render: (s) => s.phone || '—' },
-          { key: 'actions', header: '', render: (s) => <button className="btn-secondary" onClick={() => { setDelError(''); setDeleting(s) }} aria-label={`Delete ${s.name}`}><Trash2 className="h-4 w-4" />Delete</button> },
+          { key: 'actions', header: '', render: (s) => <button className="btn-danger" onClick={() => { setDelError(''); setDeleting(s) }} aria-label={`Delete ${s.name}`}><Trash2 className="h-4 w-4" />Delete</button> },
         ]} />
         <Pagination meta={meta} onPage={setPage} />
       </div>

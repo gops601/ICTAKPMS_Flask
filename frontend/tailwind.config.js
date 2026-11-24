@@ -4,11 +4,11 @@ export default {
   theme: {
     extend: {
       colors: {
-        // "Burgundy & saffron": deep maroon sidebar, crimson primary and warm amber accent on a soft cream canvas.
+        // Light rose & saffron: soft blush surfaces, rose primary and warm amber accent on a beige canvas.
         navy: { 950: '#2a0a12', 900: '#3b0f1b', 800: '#4f1524', 700: '#6b1d31' },
-        brand: { DEFAULT: '#9f1239', dark: '#881337', light: '#ffe4e6' },
+        brand: { DEFAULT: '#e11d48', dark: '#be123c', light: '#ffe4e6' },
         accent: { DEFAULT: '#d97706', dark: '#b45309', light: '#fef3c7' },
-        canvas: '#faf6f2',
+        canvas: '#f2e8d5',
       },
       boxShadow: {
         soft: '0 1px 2px rgba(42,10,18,0.05), 0 8px 24px -12px rgba(42,10,18,0.18)',

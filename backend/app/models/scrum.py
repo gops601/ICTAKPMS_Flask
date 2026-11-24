@@ -32,8 +32,18 @@ class ScrumTask(TimestampMixin, db.Model):
 
     board = db.relationship("ScrumBoard", back_populates="tasks")
     assignee = db.relationship("Student")
+    assignees = db.relationship("ScrumTaskAssignee", cascade="all, delete-orphan")
     comments = db.relationship("ScrumTaskComment", back_populates="task", cascade="all, delete-orphan")
     history = db.relationship("ScrumTaskHistory", back_populates="task", cascade="all, delete-orphan")
+
+
+class ScrumTaskAssignee(TimestampMixin, db.Model):
+    """A task can be assigned to several students; ScrumTask.assigned_student_id mirrors the first."""
+    __tablename__ = "scrum_task_assignees"
+    __table_args__ = (db.UniqueConstraint("task_id", "student_id", name="uq_task_assignee"),)
+    id = db.Column(db.Integer, primary_key=True)
+    task_id = db.Column(db.Integer, db.ForeignKey("scrum_tasks.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
 
 
 class ScrumTaskComment(TimestampMixin, db.Model):

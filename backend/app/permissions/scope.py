@@ -6,7 +6,7 @@ Query helpers return filtered selects; `can_*` helpers return booleans; `ensure_
 (not 403) so resource existence is not leaked.
 """
 from app.extensions import db
-from app.models import (Batch, BatchMentor, DomainLead, Mentor, Project, ProjectStudent, Student)
+from app.models import (Batch, BatchMentor, DomainLead, Mentor, Project, ProjectMentor, ProjectStudent, Student)
 from app.models.user import ROLE_ADMIN, ROLE_DOMAIN_LEAD, ROLE_MENTOR, ROLE_STUDENT
 from app.utils.errors import NotFound
 
@@ -70,7 +70,8 @@ def can_access_project(user, project):
         return project.batch.domain_id in lead_domain_ids(user)
     if role == ROLE_MENTOR:
         m = mentor_profile(user)
-        return bool(m and (project.mentor_id == m.id or project.batch_id in mentor_batch_ids(user)))
+        return bool(m and (project.mentor_id == m.id or project.batch_id in mentor_batch_ids(user)
+                           or db.session.query(ProjectMentor).filter_by(project_id=project.id, mentor_id=m.id).first()))
     if role == ROLE_STUDENT:
         s = student_profile(user)
         return bool(s and db.session.query(ProjectStudent).filter_by(
@@ -102,6 +103,7 @@ def scoped_projects(user):
     if role == ROLE_MENTOR:
         m = mentor_profile(user)
         return q.where(db.or_(Project.mentor_id == (m.id if m else -1),
+                              Project.id.in_(db.select(ProjectMentor.project_id).where(ProjectMentor.mentor_id == (m.id if m else -1))),
                               Project.batch_id.in_(mentor_batch_ids(user) or {-1})))
     s = student_profile(user)
     return q.join(ProjectStudent, ProjectStudent.project_id == Project.id).where(

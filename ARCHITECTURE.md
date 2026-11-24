@@ -1,4 +1,4 @@
-# ICTAKPMS – Architecture (approved design)
+# ICTAK – Architecture (approved design)
 
 ```
 Browser (React/Vite/Tailwind) ──► nginx (SPA + /api proxy) ──► Flask/gunicorn ──► MySQL 8

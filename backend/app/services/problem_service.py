@@ -156,6 +156,22 @@ def update_ps(ps, data, user):
     return ps
 
 
+def delete_ps(ps):
+    """Permanently delete a Project Shelf entry. Refused while any project was allocated from it."""
+    from app.models import Project
+    from app.services import file_service
+    used = db.session.query(Project).filter_by(problem_statement_id=ps.id).count()
+    if used:
+        raise AppError(f"{used} project(s) were allocated from this entry. Deactivate it instead of deleting.", 409)
+    files = [d.file for d in ps.datasets] + [d.file for d in ps.documents]
+    info = {"code": ps.ps_code, "title": ps.title}
+    db.session.delete(ps)                    # dataset / document links cascade
+    db.session.flush()
+    for f in files:
+        file_service.delete_file_if_unused(f)
+    return info
+
+
 def set_status(ps, status):
     if status not in STATUSES:
         raise AppError(f"status must be one of: {', '.join(STATUSES)}", 422)

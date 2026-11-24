@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import DataCollectionTable from '../../components/DataCollectionTable'
 import { Link, useParams } from 'react-router-dom'
 import { Pencil } from 'lucide-react'
 import { psService } from '../../services/adminService'
@@ -35,11 +36,14 @@ export default function ProblemStatementDetail() {
     <div className="max-w-4xl space-y-4">
       <PageHeader title={ps.title} subtitle={`${ps.ps_code} · ${ps.domain.name}${ps.subdomain ? ` › ${ps.subdomain.name}` : ''}${ps.estimated_duration ? ` · ${ps.estimated_duration}` : ''}`}
         actions={<>
+          {ps.proposed_by && <StatusBadge tone="green">Student project · {ps.proposed_by.name}</StatusBadge>}
           <StatusBadge tone={ps.source_type === 'industry' ? 'blue' : 'green'}>{ps.source_type === 'industry' ? `Industry · ${ps.industry}` : 'Internal'}</StatusBadge>
           <StatusBadge tone={DIFF_TONE[ps.difficulty]}>{ps.difficulty}</StatusBadge>
           <StatusBadge status={ps.status} />
           {ps.can_edit && <Link to={`${base}/project-shelf/${ps.id}/edit`} className="btn-secondary"><Pencil className="h-4 w-4" />Edit</Link>}
         </>} />
+      {ps.approval_status === 'pending' && <Alert type="warning">Added by a student and waiting for a mentor's approval. It cannot be allocated, and the student cannot start the SRS, until a mentor approves it.</Alert>}
+      {ps.approval_status === 'rejected' && <Alert>A mentor rejected this student project.</Alert>}
       {SECTIONS.filter(([k]) => ps[k]).map(([k, label]) => (
         <section key={k} className="card" aria-label={label}>
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">{label}</h2>
@@ -47,6 +51,7 @@ export default function ProblemStatementDetail() {
           <div className="rich-content text-sm text-slate-800" dangerouslySetInnerHTML={{ __html: ps[k] }} />
         </section>
       ))}
+      <DataCollectionTable rows={ps.data_collection} />
       <AttachmentPanel psId={ps.id} kind="datasets" title="Datasets" canEdit={false} items={ps.datasets} onChanged={load} />
       <AttachmentPanel psId={ps.id} kind="documents" title="Reference documents" canEdit={false} items={ps.documents} onChanged={load} />
     </div>

@@ -13,3 +13,14 @@ def domain_lead_user_ids(domain_id):
     if not domain_id:
         return set()
     return {r[0] for r in db.session.query(DomainLead.user_id).filter_by(domain_id=domain_id).all()}
+
+
+def domain_mentor_user_ids(domain_id):
+    """Active mentors who belong to a domain."""
+    if not domain_id:
+        return set()
+    from app.models import Mentor, User
+    from app.services.domain_sync_service import mentor_in_domains
+    rows = (db.session.query(Mentor.user_id).join(User, User.id == Mentor.user_id)
+            .filter(mentor_in_domains([domain_id]), User.is_active.is_(True)).all())
+    return {r[0] for r in rows}

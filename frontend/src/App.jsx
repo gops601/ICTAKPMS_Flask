@@ -4,6 +4,8 @@ import { useAuth } from './context/AuthContext'
 import RoleRoute from './routes/RoleRoute'
 import AppLayout from './layouts/AppLayout'
 import Login from './pages/common/Login'
+import SsoCallback from './pages/common/SsoCallback'
+import PortalConnections from './pages/admin/PortalConnections'
 import ForgotPassword from './pages/common/ForgotPassword'
 import ResetPassword from './pages/common/ResetPassword'
 import Profile from './pages/common/Profile'
@@ -65,6 +67,7 @@ export default function App() {
     <Suspense fallback={<Spinner />}>
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/sso" element={<SsoCallback />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password/:token" element={<ResetPassword />} />
 
@@ -85,6 +88,7 @@ export default function App() {
             <Route path="/admin/reports" element={<ReportsPage />} />
             <Route path="/admin/ous" element={<OUManagement />} />
             <Route path="/admin/domains" element={<DomainManagement />} />
+            <Route path="/admin/portals" element={<PortalConnections />} />
             <Route path="/admin/batches" element={<BatchList />} />
             <Route path="/admin/batches/new" element={<BatchForm />} />
             <Route path="/admin/batches/upload" element={<Navigate to="/admin/uploads?tab=batches" replace />} />
@@ -115,6 +119,7 @@ export default function App() {
             <Route path="/lead/evaluations" element={<EvaluationQueuePage />} />
             <Route path="/lead/date-requests" element={<DateRequestsPage />} />
             <Route path="/lead/mentors" element={<MentorWorkload />} />
+            <Route path="/lead/proposals" element={<ProposalApprovals />} />
             <Route path="/lead/projects" element={<ProjectList title="Project Monitoring" subtitle="Student-wise progress, SRS status and delays in your domain." />} />
             {psRoutes('/lead')}
           </Route>

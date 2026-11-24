@@ -18,11 +18,11 @@ export default function WelcomeBanner({ extra }) {
   const { user } = useAuth()
   const first = (user.name || '').split(' ')[0]
   return (
-    <section className="banner-gradient relative overflow-hidden rounded-2xl p-6 text-white shadow-soft" aria-label="Welcome">
+    <section className="banner-gradient relative overflow-hidden rounded-2xl p-6 text-rose-900 shadow-soft" aria-label="Welcome">
       <BannerArt className="pointer-events-none absolute -right-4 bottom-0 hidden h-full w-72 sm:block" />
       <div className="relative max-w-xl">
         <h2 className="text-xl font-semibold sm:text-2xl">{greeting()}, {first}!</h2>
-        <p className="mt-1 text-sm text-rose-100">{MESSAGES[user.role]}</p>
+        <p className="mt-1 text-sm text-rose-900/80">{MESSAGES[user.role]}</p>
         {extra && <div className="mt-3">{extra}</div>}
       </div>
     </section>

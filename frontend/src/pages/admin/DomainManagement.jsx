@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Layers, Pencil, Plus, Users } from 'lucide-react'
+import { Layers, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import { domainService, userService } from '../../services/adminService'
 import { errorMessage, fieldErrors } from '../../services/api'
 import PageHeader from '../../components/PageHeader'
@@ -111,6 +111,11 @@ export function SubdomainsModal({ domain, onClose, onChanged }) {
     const sd = await domainService.updateSubdomain(editing.id, { name: editing.name })
     setSubs((s) => s.map((x) => (x.id === sd.id ? sd : x))); setEditing(null)
   })
+  const removeSub = (sd) => run(async () => {
+    if (!window.confirm(`Delete subdomain "${sd.name}"? This cannot be undone.`)) return
+    await domainService.removeSubdomain(sd.id)
+    setSubs((s) => s.filter((x) => x.id !== sd.id))
+  })
   const toggleActive = (sd) => run(async () => {
     const upd = await domainService.updateSubdomain(sd.id, { is_active: !sd.is_active })
     setSubs((s) => s.map((x) => (x.id === upd.id ? upd : x)))
@@ -139,6 +144,7 @@ export function SubdomainsModal({ domain, onClose, onChanged }) {
                   <div className="flex gap-2">
                     <button className="btn-secondary" onClick={() => setEditing({ id: sd.id, name: sd.name })}><Pencil className="h-4 w-4" />Rename</button>
                     <button className="btn-secondary" disabled={busy} onClick={() => toggleActive(sd)}>{sd.is_active ? 'Deactivate' : 'Activate'}</button>
+                    <button className="btn-danger" disabled={busy} aria-label={`Delete subdomain ${sd.name}`} onClick={() => removeSub(sd)}><Trash2 className="h-4 w-4" />Delete</button>
                   </div>
                 </>
               )}
@@ -157,6 +163,7 @@ export default function DomainManagement() {
   const [editing, setEditing] = useState(null)
   const [leadsFor, setLeadsFor] = useState(null)
   const [subsFor, setSubsFor] = useState(null)
+  const [deleting, setDeleting] = useState(null)
   const [toggle, setToggle] = useState(null)
   const [busy, setBusy] = useState(false)
 
@@ -192,6 +199,7 @@ export default function DomainManagement() {
               <button className="btn-secondary" onClick={() => setLeadsFor(d)}><Users className="h-4 w-4" />Leads</button>
               <button className="btn-secondary" onClick={() => setSubsFor(d)}><Layers className="h-4 w-4" />Subdomains</button>
               <button className="btn-secondary" onClick={() => setToggle(d)}>{d.is_active ? 'Deactivate' : 'Activate'}</button>
+              <button className="btn-danger" aria-label={`Delete ${d.name}`} onClick={() => { setError(''); setDeleting(d) }}><Trash2 className="h-4 w-4" />Delete</button>
             </div>
           ) },
         ]} />
@@ -199,6 +207,15 @@ export default function DomainManagement() {
       {editing && <DomainFormModal domain={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
       {subsFor && <SubdomainsModal domain={subsFor} onClose={() => { setSubsFor(null) }} onChanged={load} />}
       {leadsFor && <LeadsModal domain={leadsFor} onClose={() => setLeadsFor(null)} onSaved={() => { setLeadsFor(null); load() }} />}
+      {deleting && (
+        <ConfirmDialog danger confirmLabel="Delete permanently" busy={busy} onCancel={() => setDeleting(null)}
+          message={`Permanently delete the domain ${deleting.name} (${deleting.code}) with its subdomains and lead assignments? This cannot be undone. A domain that has batches or Project Shelf entries cannot be deleted (deactivate it instead).`}
+          onConfirm={async () => {
+            setBusy(true)
+            try { await domainService.remove(deleting.id); setDeleting(null); load() }
+            catch (e) { setError(errorMessage(e)); setDeleting(null) } finally { setBusy(false) }
+          }} />
+      )}
       {toggle && (
         <ConfirmDialog message={toggle.is_active ? `Deactivate ${toggle.name}? New batches cannot be assigned to it.` : `Activate ${toggle.name}?`}
           confirmLabel={toggle.is_active ? 'Deactivate' : 'Activate'} danger={toggle.is_active} busy={busy}

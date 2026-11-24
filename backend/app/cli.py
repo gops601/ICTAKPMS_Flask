@@ -58,6 +58,27 @@ def register_cli(app):
         seed_reference_data()
         click.echo("Reference data seeded.")
 
+    @app.cli.command("sync-data")
+    @with_appcontext
+    def sync_data():
+        """Self-heal domain wiring: give mentor-less batches their domain's mentors; report leads/domains/mentors that
+        need an administrator (a lead without a domain, a domain without a lead). Idempotent; safe at every startup."""
+        from app.services import domain_sync_service
+        admin = (db.session.query(User).join(Role, Role.id == User.role_id)
+                 .filter(Role.name == "admin", User.is_active.is_(True)).order_by(User.id).first())
+        report = domain_sync_service.repair(admin)
+        db.session.commit()
+        for code, mentors in report["batches_given_mentors"]:
+            click.echo(f"  batch {code}: assigned {', '.join(mentors)}")
+        for email in report.get("leads_made_mentors", []):
+            click.echo(f"  domain lead {email} is now also a mentor")
+        for key, label in (("leads_without_domain", "Domain lead without a domain (sees nothing)"),
+                           ("domains_without_lead", "Domain with batches but no lead"),
+                           ("mentors_without_domain", "Mentor without a domain")):
+            for item in report[key]:
+                click.echo(f"  WARNING {label}: {item}")
+        click.echo("Domain data in sync.")
+
     @app.cli.command("create-admin")
     @click.option("--email", default=lambda: os.getenv("ADMIN_EMAIL"), help="Defaults to $ADMIN_EMAIL")
     @click.option("--name", default=lambda: os.getenv("ADMIN_NAME", "Administrator"))

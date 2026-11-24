@@ -3,6 +3,7 @@ from marshmallow import EXCLUDE, Schema, fields, validate
 from app.extensions import db
 from app.models import ProjectGithubRepository, ProjectLifecycleTransition, ProjectActivityLog, User
 from app.services import lifecycle, project_service, srs_service
+from app.services.metrics_service import phase_for, project_weeks
 
 
 class _Base(Schema):
@@ -35,6 +36,12 @@ class ReopenSchema(_Base):
 
 class ProjectMentorSchema(_Base):
     mentor_id = fields.Integer(allow_none=True, required=True)
+    reason = fields.String(allow_none=True, validate=validate.Length(max=300))
+
+
+class ProjectMentorsSchema(_Base):
+    mentor_ids = fields.List(fields.Integer(), required=True)
+    reason = fields.String(allow_none=True, validate=validate.Length(max=300))
 
 
 class ProjectSettingsSchema(_Base):
@@ -57,11 +64,25 @@ def _iso(d):
     return d.isoformat() if d else None
 
 
+def _lead_mentors(project, role):
+    """True when a domain lead is also one of this project's mentors (so mentor actions are offered to them)."""
+    if role != "domain_lead":
+        return False
+    try:
+        from app.permissions import current_user
+        from app.services.evaluation_service import is_assigned_mentor
+        return is_assigned_mentor(current_user(), project)
+    except Exception:           # outside a request
+        return False
+
+
 def project_to_dict(p, detail=False, role=None):
     mentors = project_service.mentors_for_project(p)
     reasons = project_service.delay_reasons(p)
     out = {
         "id": p.id, "code": p.code, "title": p.title, "stage": p.stage, "stage_label": lifecycle.LABELS[p.stage],
+        "mode": p.batch.mode, "total_weeks": project_weeks(p),
+        "week_plan": [{"week": w, "phase": phase_for(w)} for w in range(1, project_weeks(p) + 1)],
         "batch": {"id": p.batch.id, "code": p.batch.code, "name": p.batch.name,
                   "domain": {"id": p.batch.domain.id, "name": p.batch.domain.name} if p.batch.domain else None},
         "problem_statement": {"id": p.problem_statement.id, "ps_code": p.problem_statement.ps_code,
@@ -83,7 +104,7 @@ def project_to_dict(p, detail=False, role=None):
         out["implementation_started_at"] = _iso(p.implementation_started_at)
         out["reviews"] = [{"week_no": r.week_no, "due_date": _iso(r.due_date), "status": r.status}
                           for r in sorted(_reviews(p), key=lambda r: r.week_no)]
-        out["available_actions"] = lifecycle.available_actions(p, role) if role else []
+        out["available_actions"] = lifecycle.available_actions(p, role, also_mentor=_lead_mentors(p, role)) if role else []
     return out
 
 

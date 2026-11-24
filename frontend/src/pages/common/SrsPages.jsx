@@ -57,7 +57,7 @@ export function SrsQueuePage() {
   const [page, setPage] = useState(1)
   const [batchId, setBatchId] = useState('')
   const { items, meta, loading, error } = useList(srsService.queue, { page, batch_id: batchId || undefined })
-  const reviewer = user.role === 'mentor' || user.role === 'admin'
+  const reviewer = user.role === 'mentor' || user.role === 'admin' || Boolean(user.is_mentor)
   return (
     <div>
       <PageHeader title={reviewer ? 'SRS Review Queue' : 'SRS Approval Status'}

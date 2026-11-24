@@ -5,7 +5,7 @@ from datetime import date
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.extensions import db
-from app.models import (Batch, BatchMentor, Domain, Mentor, OrganisationalUnit, ProblemStatement, Project, ProjectReview,
+from app.models import (Batch, BatchMentor, Domain, Mentor, OrganisationalUnit, ProblemStatement, Project, ProjectMentor, ProjectReview,
                         ProjectStudent, Student, SrsSubmission)
 from app.permissions.scope import lead_domain_ids, mentor_batch_ids, mentor_profile, scoped_batches, scoped_projects, student_profile
 from app.services import evaluation_service as ev
@@ -39,7 +39,8 @@ def load_projects(user, filters=None):
     if f.get("mentor_id"):
         mid = f["mentor_id"]
         via_batch = db.select(BatchMentor.batch_id).where(BatchMentor.mentor_id == mid, BatchMentor.is_active.is_(True))
-        q = q.where(db.or_(Project.mentor_id == mid, db.and_(Project.mentor_id.is_(None), Project.batch_id.in_(via_batch))))
+        q = q.where(db.or_(Project.mentor_id == mid, Project.id.in_(db.select(ProjectMentor.project_id).where(ProjectMentor.mentor_id == mid)),
+                           db.and_(Project.mentor_id.is_(None), Project.batch_id.in_(via_batch))))
     q = q.options(joinedload(Project.batch).joinedload(Batch.ou), joinedload(Project.batch).joinedload(Batch.domain),
                   joinedload(Project.problem_statement),
                   selectinload(Project.members).joinedload(ProjectStudent.student).joinedload(Student.user))
@@ -54,10 +55,13 @@ def mentors_by_project(projects):
         for bm, m in (db.session.query(BatchMentor, Mentor).join(Mentor, Mentor.id == BatchMentor.mentor_id)
                       .filter(BatchMentor.batch_id.in_(batch_ids), BatchMentor.is_active.is_(True))):
             by_batch[bm.batch_id].append(m)
-    override_ids = {p.mentor_id for p in projects if p.mentor_id}
-    overrides = {m.id: m for m in db.session.query(Mentor).filter(Mentor.id.in_(override_ids or {-1}))} if override_ids else {}
-    return {p.id: ([overrides[p.mentor_id]] if p.mentor_id in overrides else (by_batch[p.batch_id] if not p.mentor_id else []))
-            for p in projects}
+    explicit = defaultdict(list)
+    pids = [p.id for p in projects]
+    if pids:
+        for pm, m in (db.session.query(ProjectMentor, Mentor).join(Mentor, Mentor.id == ProjectMentor.mentor_id)
+                      .filter(ProjectMentor.project_id.in_(pids)).order_by(ProjectMentor.id)):
+            explicit[pm.project_id].append(m)
+    return {p.id: (explicit[p.id] if explicit[p.id] else (by_batch[p.batch_id] if not p.mentor_id else [])) for p in projects}
 
 
 def srs_status_of(stage):

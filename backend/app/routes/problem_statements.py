@@ -49,6 +49,8 @@ def list_problem_statements():
         q = q.where(ProblemStatement.domain_id.in_(mentor_domain_ids(user) or {-1}))
     if a.get("domain_id", type=int):
         q = q.where(ProblemStatement.domain_id == a.get("domain_id", type=int))
+    if a.get("approval_status") in ("approved", "pending", "rejected", "withdrawn"):
+        q = q.where(ProblemStatement.approval_status == a["approval_status"])
     if a.get("subdomain_id", type=int):
         q = q.where(ProblemStatement.subdomain_id == a.get("subdomain_id", type=int))
     if a.get("difficulty") in problem_service.DIFFICULTIES:
@@ -97,6 +99,13 @@ def create_problem_statement(data):
         raise AppError("Validation failed", 422, errors)
     ps = problem_service.create_ps(clean, user)
     audit(user.id, "problem_statement.create", "problem_statement", ps.id, {"code": ps.ps_code})
+    # keep the domain's leads and mentors in sync: they all work from this domain's shelf
+    from app.services.notification_service import domain_lead_user_ids, domain_mentor_user_ids, notify
+    notify((domain_lead_user_ids(ps.domain_id) | domain_mentor_user_ids(ps.domain_id)) - {user.id}, "shelf_project_added",
+           "New project on the Project Shelf", f"{ps.ps_code} \u2013 {ps.title} was added to {ps.domain.name}.",
+           f"/lead/project-shelf/{ps.id}")
+    from app.services import domain_sync_service
+    domain_sync_service.warn_admins_if_no_lead(ps.domain_id, f"Project {ps.ps_code}")
     db.session.commit()
     return ok(ps_to_dict(ps, True, True), "Problem statement created", 201)
 
@@ -130,6 +139,17 @@ def update_problem_statement(data, ps_id):
     audit(current_user().id, "problem_statement.update", "problem_statement", ps.id)
     db.session.commit()
     return ok(ps_to_dict(ps, True, True))
+
+
+@bp.delete("/<int:ps_id>")
+@bp.doc(security=SEC, description="Admins and the domain's leads. Refused (409) once projects were allocated from it.")
+@roles_required(*MANAGERS)
+def delete_problem_statement(ps_id):
+    ps = _editable(ps_id)
+    info = problem_service.delete_ps(ps)
+    audit(current_user().id, "problem_statement.delete", "problem_statement", ps_id, info)
+    db.session.commit()
+    return ok(message=f"{info['code']} was deleted")
 
 
 @bp.patch("/<int:ps_id>/status")
@@ -197,7 +217,7 @@ def delete_attachment(ps_id, kind, link_id):
     attachment = link.file
     db.session.delete(link)
     db.session.flush()
-    file_service.delete_file(attachment)
+    file_service.delete_file_if_unused(attachment)
     audit(current_user().id, "problem_statement.file_delete", "problem_statement", ps.id,
           {"file": attachment.original_name})
     db.session.commit()

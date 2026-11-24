@@ -82,9 +82,14 @@ class Batch(TimestampMixin, db.Model):
     start_date = db.Column(db.Date)
     end_date = db.Column(db.Date)
     status = db.Column(db.String(20), default="active", nullable=False)  # active | closed
+    # online = 4-week projects, offline = 3-week projects (week 1: SRS + datasets, then implementation)
+    mode = db.Column(db.String(10), default="online", server_default="online", nullable=False)
     # Set by the domain lead: the window projects in this batch run in (allocation defaults to it)
     project_start_date = db.Column(db.Date)
     project_end_date = db.Column(db.Date)
+    # Set when the batch was enrolled from an external portal (see ExternalPortal)
+    external_portal_id = db.Column(db.Integer, db.ForeignKey("external_portals.id", ondelete="SET NULL"), index=True)
+    external_ref = db.Column(db.String(100))
 
     ou = db.relationship("OrganisationalUnit", back_populates="batches")
     domain = db.relationship("Domain", back_populates="batches")
@@ -149,3 +154,21 @@ class BatchMentor(TimestampMixin, db.Model):
 
     batch = db.relationship("Batch", back_populates="batch_mentors")
     mentor = db.relationship("Mentor")
+
+
+class ExternalPortal(TimestampMixin, db.Model):
+    """Another portal that enrols batches/students here and signs its users in (SSO) with a shared secret."""
+    __tablename__ = "external_portals"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    slug = db.Column(db.String(60), unique=True, nullable=False)
+    base_url = db.Column(db.String(255))                      # used for the "pull" sync
+    enrollment_path = db.Column(db.String(255), default="/api/enrollments")
+    api_token = db.Column(db.String(255))                     # bearer token we present when pulling
+    shared_secret = db.Column(db.String(128), nullable=False)  # HS256 secret: verifies SSO tokens and pushed enrolments
+    default_ou_id = db.Column(db.Integer, db.ForeignKey("organisational_units.id", ondelete="SET NULL"))
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    last_sync_at = db.Column(db.DateTime)
+    last_sync_summary = db.Column(db.JSON)
+
+    default_ou = db.relationship("OrganisationalUnit")

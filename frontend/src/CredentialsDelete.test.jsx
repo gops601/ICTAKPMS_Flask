@@ -53,7 +53,7 @@ describe('mentors page – credentials and delete', () => {
     await userEvent.click(await screen.findByRole('button', { name: /download credentials/i }))
     const dialog = screen.getByRole('dialog')
     await userEvent.click(within(dialog).getByRole('button', { name: /generate passwords/i }))
-    await waitFor(() => expect(svc.userService.credentials).toHaveBeenCalledWith('mentor'))
+    await waitFor(() => expect(svc.userService.credentials).toHaveBeenCalledWith('mentor', undefined, false))
     expect(await within(dialog).findByText(/1 mentor\(s\) ready\. 1 skipped\./)).toBeInTheDocument()
     expect(within(dialog).getByLabelText('Skipped users')).toHaveTextContent('Old Mentor (old@x.com) – Already set their own password')
     await userEvent.click(within(dialog).getByRole('button', { name: /download details with passwords/i }))
@@ -78,13 +78,34 @@ describe('mentors page – credentials and delete', () => {
   })
 })
 
+describe('credentials – reissue for people who already set a password', () => {
+  it('sends include_active only when the box is ticked', async () => {
+    svc.userService.credentials.mockResolvedValue({ credentials: [], skipped: [], role: 'mentor' })
+    render(<MemoryRouter><UserManagement fixedRole="mentor" title="Mentors" addLabel="Add mentor" /></MemoryRouter>)
+    await userEvent.click(await screen.findByRole('button', { name: /download credentials/i }))
+    const dialog = screen.getByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: /current password stops working/i }))
+    await userEvent.click(within(dialog).getByRole('button', { name: /generate passwords/i }))
+    await waitFor(() => expect(svc.userService.credentials).toHaveBeenCalledWith('mentor', undefined, true))
+  })
+
+  it("offers a download right after resetting one person's password", async () => {
+    svc.userService.resetPassword.mockResolvedValue({ temporary_password: 'Reset12345' })
+    render(<MemoryRouter><UserManagement fixedRole="mentor" title="Mentors" addLabel="Add mentor" /></MemoryRouter>)
+    await userEvent.click(await screen.findByRole('button', { name: /reset password/i }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^reset password$/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /download login details/i }))
+    expect(svc.downloadTextFile).toHaveBeenCalledWith(expect.stringContaining('Reset12345'), 'mia_login_details.csv')
+  })
+})
+
 describe('domain leads page', () => {
   it('offers credentials for domain leads too', async () => {
     svc.userService.credentials.mockResolvedValue({ credentials: [], skipped: [], role: 'domain_lead' })
     render(<MemoryRouter><UserManagement fixedRole="domain_lead" title="Domain Leads" addLabel="Add domain lead" /></MemoryRouter>)
     await userEvent.click(await screen.findByRole('button', { name: /download credentials/i }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /generate passwords/i }))
-    await waitFor(() => expect(svc.userService.credentials).toHaveBeenCalledWith('domain_lead'))
+    await waitFor(() => expect(svc.userService.credentials).toHaveBeenCalledWith('domain_lead', undefined, false))
   })
 })
 
@@ -96,5 +117,32 @@ describe('students page – delete', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Delete Asha K' }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /delete permanently/i }))
     await waitFor(() => expect(svc.userService.remove).toHaveBeenCalledWith(33))
+  })
+})
+
+describe('domain leads page – domains', () => {
+  const lead = (domains) => ({ id: 5, name: 'Lena Lead', email: 'lena@x.com', role: 'domain_lead', is_active: true, domains })
+  const renderLeads = () => render(<MemoryRouter><UserManagement fixedRole="domain_lead" title="Domain Leads" addLabel="Add domain lead" /></MemoryRouter>)
+
+  it('warns when a lead has no domain and lets the admin assign one', async () => {
+    svc.userService.list.mockResolvedValue({ items: [lead([])], meta: { page: 1, pages: 1, total: 1 } })
+    svc.domainService.list.mockResolvedValue([{ id: 1, name: 'Enterprise Domain' }, { id: 2, name: 'IoT' }])
+    svc.userService.setDomains = vi.fn().mockResolvedValue({})
+    renderLeads()
+    expect(await screen.findByText(/no domain – sees nothing/i)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /^domains$/i }))
+    const dialog = screen.getByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: /^save$/i }))
+    expect(await within(dialog).findByText(/choose at least one domain/i)).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Enterprise Domain' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: /^save$/i }))
+    await waitFor(() => expect(svc.userService.setDomains).toHaveBeenCalledWith(5, [1]))
+  })
+
+  it('shows the domains a lead already leads', async () => {
+    svc.userService.list.mockResolvedValue({ items: [lead([{ id: 1, name: 'Enterprise Domain' }])], meta: { page: 1, pages: 1, total: 1 } })
+    renderLeads()
+    expect(await screen.findByText('Enterprise Domain')).toBeInTheDocument()
+    expect(screen.queryByText(/sees nothing/i)).not.toBeInTheDocument()
   })
 })

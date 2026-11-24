@@ -8,6 +8,7 @@ export const ouService = {
   get: (id) => api.get(`/ous/${id}`).then(d),
   create: (body) => api.post('/ous', body).then(d),
   update: (id, body) => api.put(`/ous/${id}`, body).then(d),
+  remove: (id) => api.delete(`/ous/${id}`).then(d),
   setActive: (id, is_active) => api.patch(`/ous/${id}/active`, { is_active }).then(d),
   fields: (id, params) => api.get(`/ous/${id}/fields`, { params }).then(d),
   addField: (id, body) => api.post(`/ous/${id}/fields`, body).then(d),
@@ -20,6 +21,8 @@ export const domainService = {
   update: (id, body) => api.put(`/domains/${id}`, body).then(d),
   setActive: (id, is_active) => api.patch(`/domains/${id}/active`, { is_active }).then(d),
   setLeads: (id, user_ids) => api.put(`/domains/${id}/leads`, { user_ids }).then(d),
+  remove: (id) => api.delete(`/domains/${id}`).then(d),
+  removeSubdomain: (subId) => api.delete(`/domains/subdomains/${subId}`).then(d),
   addSubdomain: (id, name) => api.post(`/domains/${id}/subdomains`, { name }).then(d),
   updateSubdomain: (subId, body) => api.patch(`/domains/subdomains/${subId}`, body).then(d),
 }
@@ -40,12 +43,29 @@ export const studentService = {
   create: (body) => api.post('/students', body).then(d),
 }
 
+export const portalService = {
+  list: () => api.get('/admin/portals').then(d),
+  create: (body) => api.post('/admin/portals', body).then(d),
+  update: (id, body) => api.put(`/admin/portals/${id}`, body).then(d),
+  rotateSecret: (id) => api.post(`/admin/portals/${id}/rotate-secret`).then(d),
+  sync: (id) => api.post(`/admin/portals/${id}/sync`).then(d),
+  remove: (id) => api.delete(`/admin/portals/${id}`).then(d),
+  guide: () => downloadFile('/admin/portals/integration-guide', undefined, 'ICTAK-portal-integration-guide.md'),
+  /** Configuration file for the other portal. When the one-time `secret` is passed it is written into the file. */
+  config: async (portal, format = 'json', secret = null) => {
+    const res = await api.get(`/admin/portals/${portal.id}/config`, { params: { format }, responseType: 'text', transformResponse: (x) => x })
+    const text = secret ? res.data.replace('<PASTE_SHARED_SECRET_HERE>', secret) : res.data
+    downloadTextFile(text, format === 'env' ? `${portal.slug}-ictak.env` : `${portal.slug}-ictak-config.json`, format === 'env' ? 'text/plain' : 'application/json')
+  },
+}
+
 export const userService = {
   list: (params) => api.get('/admin/users', { params }).then(withMeta),
   create: (body) => api.post('/admin/users', body).then(d),
   resetPassword: (id) => api.post(`/admin/users/${id}/reset-password`, {}).then(d),
-  credentials: (role, user_ids) => api.post('/admin/users/credentials', { role, user_ids }).then(d),
+  credentials: (role, user_ids, include_active = false) => api.post('/admin/users/credentials', { role, user_ids, include_active }).then(d),
   remove: (id) => api.delete(`/admin/users/${id}`).then(d),
+  setDomains: (id, domain_ids) => api.put(`/admin/users/${id}/domains`, { domain_ids }).then(d),
   setActive: (id, is_active) => api.patch(`/admin/users/${id}/active`, { is_active }).then(d),
   mentors: (params) => api.get('/mentors', { params }).then(withMeta),
 }
@@ -90,6 +110,7 @@ export const psService = {
   create: (body) => api.post('/problem-statements', body).then(d),
   update: (id, body) => api.put(`/problem-statements/${id}`, body).then(d),
   setStatus: (id, status) => api.patch(`/problem-statements/${id}/status`, { status }).then(d),
+  remove: (id) => api.delete(`/problem-statements/${id}`).then(d),
   industries: () => api.get('/problem-statements/industries').then(d),
   upload: (id, kind, file, description) => {
     const form = new FormData()
@@ -105,13 +126,19 @@ export const psService = {
 export const proposalService = {
   mine: () => api.get('/proposals/mine').then(d),
   list: (params) => api.get('/proposals', { params }).then(withMeta),
-  submit: (title, summary, file) => {
+  submit: (title, summary, file, datasets = [], subdomainId = null, dataSheet = null) => {
     const form = new FormData()
     form.append('title', title)
     if (summary) form.append('summary', summary)
+    if (subdomainId) form.append('subdomain_id', subdomainId)
     form.append('file', file)
+    datasets.forEach((f) => form.append('datasets', f))
+    if (dataSheet) form.append('data_sheet', dataSheet)
     return api.post('/proposals', form).then(d)
   },
+  projectTemplate: (format = 'xlsx') => downloadFile('/proposals/project-template', { format }, `project_template.${format}`),
+  dataTemplate: () => downloadFile('/proposals/data-template', undefined, 'data-collection-template.xlsx'),
+  downloadDataset: (p, ds) => downloadFile(`/proposals/${p.id}/datasets/${ds.id}/download`, undefined, ds.name),
   review: (id, decision, remarks) => api.post(`/proposals/${id}/review`, { decision, remarks }).then(d),
   download: (p) => downloadFile(`/proposals/${p.id}/download`, undefined, p.file.name),
 }
@@ -124,7 +151,9 @@ export const projectService = {
   transition: (id, to, reason) => api.post(`/projects/${id}/transition`, { to, reason }).then(d),
   close: (id) => api.post(`/projects/${id}/close`).then(d),
   reopen: (id, to, reason) => api.post(`/projects/${id}/reopen`, { to, reason }).then(d),
-  setMentor: (id, mentor_id) => api.put(`/projects/${id}/mentor`, { mentor_id }).then(d),
+  setMentors: (id, mentor_ids, reason) => api.put(`/projects/${id}/mentors`, { mentor_ids, reason: reason || null }).then(d),
+  setMentor: (id, mentor_id, reason) => api.put(`/projects/${id}/mentor`, { mentor_id, reason: reason || null }).then(d),
+  remove: (id) => api.delete(`/projects/${id}`).then(d),
   setBoardPermission: (id, mentor_can_edit_board) => api.patch(`/projects/${id}/settings`, { mentor_can_edit_board }).then(d),
   reassignProblem: (id, problem_statement_id) => api.post(`/projects/${id}/reassign-problem`, { problem_statement_id }).then(d),
 }
@@ -137,6 +166,7 @@ export const feedbackService = {
 export const batchMentorService = {
   list: (batchId) => api.get(`/batches/${batchId}/mentors`).then(d),
   assign: (batchId, mentor_id) => api.post(`/batches/${batchId}/mentors`, { mentor_id }).then(d),
+  assignDomain: (batchId) => api.post(`/batches/${batchId}/mentors/assign-domain`).then(d),
   remove: (batchId, mentorId) => api.delete(`/batches/${batchId}/mentors/${mentorId}`).then(d),
   reassign: (batchId, mentorId, to_mentor_id) => api.post(`/batches/${batchId}/mentors/${mentorId}/reassign`, { to_mentor_id }).then(d),
 }

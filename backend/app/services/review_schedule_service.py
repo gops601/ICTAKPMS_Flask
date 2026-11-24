@@ -62,7 +62,7 @@ def request_change(review, new_date_raw, reason, user):
         raise AppError(str(e), 422, {"new_date": str(e)})
     project = db.session.query(Project).filter_by(id=review.project_id).with_for_update().one()
     db.session.refresh(review, with_for_update=True)
-    if user.role_name != "mentor" or not ev.is_assigned_mentor(user, project):
+    if not ev.is_assigned_mentor(user, project):
         raise Forbidden("Only the project's mentor can request a review-date change")
     if review.status not in ev.EDITABLE:
         raise AppError("A submitted review's date cannot be changed", 409)
@@ -108,7 +108,7 @@ def decide(req, decision, note, user):
         review.review_date = req.new_date
         review.version += 1
         notify(member_user_ids(project), "review_rescheduled", f"Week {review.week_no} review rescheduled",
-               f"Your Week {review.week_no} review is now scheduled for {req.new_date}.", "/student/reviews")
+               f"Your Week {review.week_no} review for “{project.title}” was moved from {req.old_date}; it is now scheduled for {req.new_date}.", "/student/reviews")
         notify(mentor_ids, "review_date_approved", "Review date change approved",
                f"{user.name} approved moving Week {review.week_no} of “{project.title}” to {req.new_date}.", f"/reviews/{review.id}")
     else:
@@ -122,7 +122,7 @@ def decide(req, decision, note, user):
 def cancel(req, user):
     review = db.session.get(ProjectReview, req.review_id)
     project = db.session.get(Project, review.project_id)
-    if user.role_name != "mentor" or not ev.is_assigned_mentor(user, project):
+    if not ev.is_assigned_mentor(user, project):
         raise Forbidden("Only the project's mentor can withdraw a request")
     db.session.refresh(req, with_for_update=True)
     if req.status != "pending":

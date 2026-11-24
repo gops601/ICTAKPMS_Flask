@@ -3,7 +3,7 @@ import re
 import pytest
 
 from app.extensions import db
-from app.models import (Batch, BatchMentor, Domain, DomainLead, Mentor, OrganisationalUnit, ProblemStatement, Project,
+from app.models import (Batch, BatchMentor, Domain, DomainLead, Mentor, OrganisationalUnit, ProblemStatement, Project, ProjectStudent, User,
                         Student)
 
 ICT = re.compile(r"^ICT_[A-Z]+_[A-Z2-9]{6}$")
@@ -134,3 +134,87 @@ def test_id_generator_mixes_letters_and_digits():
     from app.utils.ids import generate_id
     ids = {generate_id("PRJ", lambda c: False) for _ in range(200)}
     assert all(ICT.match(i) and re.search(r"\d", i[8:]) and re.search(r"[A-Z]", i[8:]) for i in ids)
+
+
+# ------------------------------------------------ admin reallocates a running project to any mentor
+def test_admin_reallocates_running_project_to_any_active_mentor(client, world):
+    allocate(client, world, "la", ["s1"])
+    pid = db.session.query(Project).one().id
+    m2 = db.session.query(Mentor).join(User, User.id == Mentor.user_id).filter(User.email == "m2@x.com").one()   # NOT on the batch
+    from app.models import Notification
+    db.session.query(Notification).delete()
+    db.session.commit()
+    # a domain lead is still limited to the batch's mentors
+    assert client.put(f"/api/projects/{pid}/mentor", headers=world["H"]["la"], json={"mentor_id": m2.id}).status_code == 422
+    r = client.put(f"/api/projects/{pid}/mentor", headers=world["H"]["admin"], json={"mentor_id": m2.id, "reason": "Workload balance"})
+    assert r.status_code == 200 and [m["name"] for m in r.get_json()["data"]["mentors"]] == [m2.user.name]
+    # old batch mentor is told, new mentor is told, and the new mentor can now open the project
+    assert db.session.query(Notification).filter_by(type="project_unassigned").count() == 1
+    assert client.get(f"/api/projects/{pid}", headers=world["H"]["m2"]).status_code == 200
+    assert client.get(f"/api/projects/{pid}", headers=world["H"]["m1"]).status_code == 200   # still a batch mentor of the batch
+    m2.user.is_active = False
+    db.session.commit()
+    assert client.put(f"/api/projects/{pid}/mentor", headers=world["H"]["admin"], json={"mentor_id": m2.id}).status_code == 422
+
+
+# ----------------------------------------------------------------- deletes of other entities
+def test_delete_project_is_admin_only_and_removes_its_records(client, world):
+    allocate(client, world, "la", ["s1"])
+    pid = db.session.query(Project).one().id
+    for who in ("la", "m1", "s1"):
+        assert client.delete(f"/api/projects/{pid}", headers=world["H"][who]).status_code == 403
+    assert client.delete(f"/api/projects/{pid}", headers=world["H"]["admin"]).status_code == 200
+    from app.models import ProjectReview, ScrumBoard
+    assert db.session.query(Project).count() == 0 and db.session.query(ProjectReview).count() == 0
+    assert db.session.query(ScrumBoard).count() == 0 and db.session.query(ProjectStudent).count() == 0
+    assert client.get("/api/students", headers=world["H"]["admin"]).status_code == 200   # student account untouched
+
+
+def test_delete_shelf_entry_blocked_when_projects_exist(client, world):
+    allocate(client, world, "la", ["s1"])
+    r = client.delete(f"/api/problem-statements/{world['ps'].id}", headers=world["H"]["la"])
+    assert r.status_code == 409 and "Deactivate" in r.get_json()["message"]
+    fresh = ProblemStatement(ps_code="FREE", title="F", domain_id=domain("AIML").id, description="d")
+    db.session.add(fresh)
+    db.session.commit()
+    assert client.delete(f"/api/problem-statements/{fresh.id}", headers=world["H"]["lb"]).status_code == 404   # other domain's lead
+    assert client.delete(f"/api/problem-statements/{fresh.id}", headers=world["H"]["la"]).status_code == 200
+    assert client.delete(f"/api/problem-statements/{fresh.id}", headers=world["H"]["la"]).status_code == 404
+
+
+def test_delete_domain_ou_and_subdomain_with_guards(client, world):
+    from app.models import Subdomain
+    H = world["H"]["admin"]
+    assert client.delete(f"/api/domains/{domain('AIML').id}", headers=H).status_code == 409        # has a batch
+    assert client.delete(f"/api/domains/{domain('IOT').id}", headers=world["H"]["la"]).status_code == 403
+    sd = Subdomain(domain_id=domain("IOT").id, name="Sensors")
+    db.session.add(sd)
+    ps_ = ProblemStatement(ps_code="S1", title="S", domain_id=domain("IOT").id, description="d", subdomain_id=None)
+    db.session.add(ps_)
+    db.session.commit()
+    ps_.subdomain_id = sd.id
+    db.session.commit()
+    assert client.delete(f"/api/domains/subdomains/{sd.id}", headers=H).status_code == 409        # used by a shelf entry
+    assert client.delete(f"/api/domains/{domain('IOT').id}", headers=H).status_code == 409        # has a shelf entry
+    db.session.delete(ps_)
+    db.session.commit()
+    assert client.delete(f"/api/domains/subdomains/{sd.id}", headers=H).status_code == 200
+    assert client.delete(f"/api/domains/{domain('IOT').id}", headers=H).status_code == 200
+    ou = db.session.query(OrganisationalUnit).first()
+    assert client.delete(f"/api/ous/{ou.id}", headers=H).status_code == 409                        # B1 belongs to it
+    from app.models import Batch as B
+    db.session.query(B).delete()
+    db.session.commit()
+    assert client.delete(f"/api/ous/{ou.id}", headers=H).status_code == 200
+
+
+# ------------------------------------------- credentials can be reissued for people who already changed their password
+def test_staff_credentials_can_include_users_who_already_set_a_password(client, world):
+    base = client.post("/api/admin/users/credentials", headers=world["H"]["admin"], json={"role": "mentor"}).get_json()["data"]
+    assert base["credentials"] == [] or all(c["role"] == "mentor" for c in base["credentials"])
+    r = client.post("/api/admin/users/credentials", headers=world["H"]["admin"], json={"role": "mentor", "include_active": True}).get_json()["data"]
+    emails = {c["email"] for c in r["credentials"]}
+    assert {"m1@x.com", "m2@x.com"} <= emails and r["skipped"] == []
+    c = next(c for c in r["credentials"] if c["email"] == "m1@x.com")
+    assert client.post("/api/auth/login", json={"email": "m1@x.com", "password": "Passw0rd!x"}).status_code in (401, 423)   # old password no longer works
+    assert client.post("/api/auth/login", json={"email": "m1@x.com", "password": c["temporary_password"]}).status_code == 200

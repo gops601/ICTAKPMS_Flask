@@ -15,7 +15,7 @@ import Alert from '../../components/Alert'
 
 function CreateUserModal({ domains, onClose, onDone, fixedRole }) {
   const [form, setForm] = useState({
-    role: fixedRole || 'mentor', name: '', email: '', phone: '', domain_id: '', designation: '',
+    role: fixedRole || 'mentor', name: '', email: '', phone: '', domain_id: '', domain_ids: [], designation: '',
     mentor_type: 'internal', company: '', industry_sector: '', experience_years: '', linkedin_url: '', bio: '',
   })
   const [error, setError] = useState('')
@@ -25,8 +25,11 @@ function CreateUserModal({ domains, onClose, onDone, fixedRole }) {
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value })
 
   const submit = async (e) => {
-    e.preventDefault(); setBusy(true); setError(''); setErrs({})
+    e.preventDefault(); setError(''); setErrs({})
+    if (form.role === 'domain_lead' && form.domain_ids.length === 0) { setErrs({ domain_ids: 'Select at least one domain' }); return setError('Choose the domain this lead will manage.') }
+    setBusy(true)
     const body = { role: form.role, name: form.name, email: form.email, phone: form.phone || null }
+    if (form.role === 'domain_lead') body.domain_ids = form.domain_ids
     if (form.role === 'mentor') {
       body.domain_id = form.domain_id ? Number(form.domain_id) : null
       body.designation = form.designation || null
@@ -65,12 +68,29 @@ function CreateUserModal({ domains, onClose, onDone, fixedRole }) {
         <div><label htmlFor="u-name" className="label">Name *</label><input id="u-name" className="input" required value={form.name} onChange={set('name')} />{err('name')}</div>
         <div><label htmlFor="u-email" className="label">Email *</label><input id="u-email" type="email" className="input" required value={form.email} onChange={set('email')} />{err('email')}</div>
         <div><label htmlFor="u-phone" className="label">Phone</label><input id="u-phone" className="input" value={form.phone} onChange={set('phone')} /></div>
+        {form.role === 'domain_lead' && (
+          <fieldset>
+            <legend className="label">Domain(s) to lead *</legend>
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-slate-300 bg-white p-2">
+              {domains.map((d) => (
+                <label key={d.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={form.domain_ids.includes(d.id)}
+                    onChange={(e) => setForm({ ...form, domain_ids: e.target.checked ? [...form.domain_ids, d.id] : form.domain_ids.filter((x) => x !== d.id) })} />
+                  {d.name}
+                </label>
+              ))}
+              {domains.length === 0 && <p className="text-xs text-slate-500">No active domains yet. Add a domain first.</p>}
+            </div>
+            {err('domain_ids')}
+            <p className="mt-1 text-xs text-slate-500">The lead sees only these domains' batches and Project Shelf.</p>
+          </fieldset>
+        )}
         {form.role === 'mentor' && (
           <>
-            <div><label htmlFor="u-dom" className="label">Primary domain</label>
-              <select id="u-dom" className="input" value={form.domain_id} onChange={set('domain_id')}>
-                <option value="">None</option>{domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select></div>
+            <div><label htmlFor="u-dom" className="label">Domain *</label>
+              <select id="u-dom" className="input" required value={form.domain_id} onChange={set('domain_id')}>
+                <option value="">Select domain…</option>{domains.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>{err('domain_id')}</div>
             <fieldset>
               <legend className="label">Mentor type *</legend>
               <div className="flex gap-4 text-sm">
@@ -106,10 +126,11 @@ function StaffCredentialsModal({ role, onClose }) {
   const [result, setResult] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [includeActive, setIncludeActive] = useState(false)
   const label = ROLE_LABEL[role]
   const issue = async () => {
     setBusy(true); setError('')
-    try { setResult(await userService.credentials(role)) } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
+    try { setResult(await userService.credentials(role, undefined, includeActive)) } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
   }
   return (
     <Modal title={`Download ${label.toLowerCase()} credentials`} onClose={onClose} wide>
@@ -118,8 +139,12 @@ function StaffCredentialsModal({ role, onClose }) {
           <Alert>{error}</Alert>
           <p className="text-sm text-slate-600">
             Creates a <b>new temporary password</b> for every {label.toLowerCase()} who has not logged in yet and gives you a file with their login details to share.
-            Anyone who already chose their own password is not touched (use <i>Reset password</i> for them). Passwords are shown once and are not stored in readable form.
+            Passwords are shown once and are not stored in readable form.
           </p>
+          <label className="flex items-start gap-2 rounded-lg bg-orange-50 p-3 text-sm text-orange-800">
+            <input type="checkbox" className="mt-1" checked={includeActive} onChange={(e) => setIncludeActive(e.target.checked)} />
+            <span>Also reissue for {label.toLowerCase()}s who already chose their own password. <b>Their current password stops working</b> and they must sign in with the new one. Leave unticked to skip them.</span>
+          </label>
           <div className="flex justify-end gap-2">
             <button className="btn-secondary" onClick={onClose}>Cancel</button>
             <button className="btn-primary" disabled={busy} onClick={issue}><KeyRound className="h-4 w-4" />{busy ? 'Generating…' : 'Generate passwords'}</button>
@@ -151,6 +176,31 @@ function StaffCredentialsModal({ role, onClose }) {
   )
 }
 
+/** Set which domains a domain lead leads. A lead only ever sees the data of these domains. */
+function LeadDomainsModal({ lead, domains, onClose, onSaved }) {
+  const [selected, setSelected] = useState(new Set((lead.domains || []).map((d) => d.id)))
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const toggle = (id) => setSelected((cur) => { const n = new Set(cur); n.has(id) ? n.delete(id) : n.add(id); return n })
+  const save = async () => {
+    if (selected.size === 0) return setError('Choose at least one domain.')
+    setBusy(true); setError('')
+    try { await userService.setDomains(lead.id, [...selected]); onSaved() } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
+  }
+  return (
+    <Modal title={`Domains – ${lead.name}`} onClose={onClose}
+      footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button></>}>
+      <Alert>{error}</Alert>
+      <p className="mb-2 text-sm text-slate-600">This lead sees only the batches, mentors, students, projects and Project Shelf of the domains ticked below.</p>
+      <ul className="space-y-2">
+        {domains.map((d) => (
+          <li key={d.id}><label className="flex items-center gap-3 text-sm"><input type="checkbox" checked={selected.has(d.id)} onChange={() => toggle(d.id)} />{d.name}</label></li>
+        ))}
+      </ul>
+    </Modal>
+  )
+}
+
 export default function UserManagement({ fixedRole, title = 'Users', subtitle = 'Administrators, domain leads, mentors and students.', addLabel = 'Create user' }) {
   const [q, setQ] = useState('')
   const [role, setRole] = useState('')
@@ -163,6 +213,7 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
   const [tempPw, setTempPw] = useState(null)
   const [credentials, setCredentials] = useState(false)
   const [deleting, setDeleting] = useState(null)
+  const [domainsFor, setDomainsFor] = useState(null)
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState('')
   const dq = useDebounced(q)
@@ -173,7 +224,7 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
   const { items: raw, meta, loading, error, reload } = useList(isMentors ? userService.mentors : userService.list, {
     q: dq, role: fixedRole || role || undefined, page, mentor_type: isMentors ? mentorType || undefined : undefined,
   })
-  const items = isMentors ? raw.map((m) => ({ ...m, id: m.user_id, role: 'mentor' })) : raw
+  const items = isMentors ? raw.map((m) => ({ ...m, id: m.user_id, role: m.is_domain_lead ? 'domain_lead' : 'mentor' })) : raw
 
   const doReset = async () => {
     setBusy(true)
@@ -219,18 +270,26 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
         <DataTable loading={loading} rows={items} columns={[
           { key: 'name', header: 'Name' },
           { key: 'email', header: 'Email' },
+          ...(role === 'domain_lead' || fixedRole === 'domain_lead' ? [
+            { key: 'domains', header: 'Domain(s)', render: (u) => (u.domains && u.domains.length
+              ? u.domains.map((d) => d.name).join(', ')
+              : <StatusBadge tone="orange">No domain – sees nothing</StatusBadge>) },
+          ] : []),
           ...(isMentors ? [
-            { key: 'type', header: 'Type', render: (u) => <StatusBadge tone={u.mentor_type === 'industry' ? 'blue' : 'green'}>{u.mentor_type === 'industry' ? 'Industry' : 'Internal'}</StatusBadge> },
+            { key: 'type', header: 'Type', render: (u) => (u.is_domain_lead
+              ? <StatusBadge tone="orange">Domain lead</StatusBadge>
+              : <StatusBadge tone={u.mentor_type === 'industry' ? 'blue' : 'green'}>{u.mentor_type === 'industry' ? 'Industry' : 'Internal'}</StatusBadge>) },
             { key: 'org', header: 'Company / sector', render: (u) => (u.mentor_type === 'industry'
               ? <div><div className="font-medium">{u.company}</div><div className="text-xs text-slate-500">{u.industry_sector}{u.designation ? ` · ${u.designation}` : ''}{u.linkedin_url && <> · <a className="text-brand underline" href={u.linkedin_url} target="_blank" rel="noopener noreferrer">Profile</a></>}</div></div>
               : <span className="text-slate-400">{u.designation || 'ICT trainer'}</span>) },
           ] : [{ key: 'role', header: 'Role', render: (u) => ROLE_LABEL[u.role] }]),
           { key: 'status', header: 'Status', render: (u) => <StatusBadge status={u.is_active ? 'active' : 'inactive'} /> },
           { key: 'actions', header: 'Actions', render: (u) => (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button className="btn-secondary" onClick={() => setResetFor(u)}><KeyRound className="h-4 w-4" />Reset password</button>
+              {u.role === 'domain_lead' && <button className="btn-secondary" onClick={() => setDomainsFor(u)}>Domains</button>}
               <button className="btn-secondary" onClick={() => setToggle(u)}>{u.is_active ? 'Deactivate' : 'Activate'}</button>
-              <button className="btn-secondary" onClick={() => { setActionError(''); setDeleting(u) }} aria-label={`Delete ${u.name}`}><Trash2 className="h-4 w-4" />Delete</button>
+              <button className="btn-danger" onClick={() => { setActionError(''); setDeleting(u) }} aria-label={`Delete ${u.name}`}><Trash2 className="h-4 w-4" />Delete</button>
             </div>
           ) },
         ]} />
@@ -239,13 +298,19 @@ export default function UserManagement({ fixedRole, title = 'Users', subtitle = 
       {creating && <CreateUserModal fixedRole={fixedRole} domains={domains} onClose={() => setCreating(false)} onDone={() => { setCreating(false); reload() }} />}
       {resetFor && <ConfirmDialog message={`Reset the password for ${resetFor.name}? A new temporary password will be generated.`} confirmLabel="Reset password" busy={busy} onConfirm={doReset} onCancel={() => setResetFor(null)} />}
       {toggle && <ConfirmDialog message={`${toggle.is_active ? 'Deactivate' : 'Activate'} ${toggle.name}?`} confirmLabel={toggle.is_active ? 'Deactivate' : 'Activate'} danger={toggle.is_active} busy={busy} onConfirm={doToggle} onCancel={() => setToggle(null)} />}
+      {domainsFor && <LeadDomainsModal lead={domainsFor} domains={domains} onClose={() => setDomainsFor(null)} onSaved={() => { setDomainsFor(null); reload() }} />}
       {credentials && credRole && <StaffCredentialsModal role={credRole} onClose={() => setCredentials(false)} />}
       {deleting && <ConfirmDialog danger confirmLabel="Delete permanently" busy={busy} onConfirm={doDelete} onCancel={() => setDeleting(null)}
         message={`Permanently delete ${deleting.name} (${deleting.email})? This cannot be undone. If they have work attached you will be asked to deactivate instead.`} />}
       {tempPw && (
         <Modal title="Password reset" onClose={() => setTempPw(null)}>
           <Alert type="warning">Temporary password for {tempPw.user.email} (shown once): <b className="font-mono">{tempPw.password}</b></Alert>
-          <div className="mt-4 flex justify-end"><button className="btn-primary" onClick={() => setTempPw(null)}>Done</button></div>
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <button className="btn-secondary" onClick={() => downloadStaffCredentials([{ name: tempPw.user.name, email: tempPw.user.email, phone: tempPw.user.phone || '', role: tempPw.user.role, designation: tempPw.user.designation || '', company: tempPw.user.company || '', details: '', temporary_password: tempPw.password }], `${tempPw.user.email.split('@')[0]}_login_details.csv`)}>
+              <Download className="h-4 w-4" />Download login details
+            </button>
+            <button className="btn-primary" onClick={() => setTempPw(null)}>Done</button>
+          </div>
         </Modal>
       )}
     </div>

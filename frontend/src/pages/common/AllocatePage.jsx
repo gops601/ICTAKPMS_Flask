@@ -29,7 +29,7 @@ export default function AllocatePage() {
         setBatch(b)
         const [s, ps, m] = await Promise.all([
           studentService.list({ batch_id: id, per_page: 100 }),
-          psService.list({ domain_id: b.domain?.id, status: 'active', per_page: 100 }),
+          psService.list({ domain_id: b.domain?.id, status: 'active', approval_status: 'approved', per_page: 100 }),
           batchMentorService.list(id),
         ])
         setStudents(s.items); setStatements(ps.items); setMentors(m)

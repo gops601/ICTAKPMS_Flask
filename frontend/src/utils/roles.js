@@ -1,6 +1,6 @@
 import {
   Bell, Briefcase, Building2, ClipboardCheck, FileCheck, FilePlus, FileSpreadsheet, FileText, FileUp, FolderKanban, Github, KanbanSquare, ListChecks, Star, BarChart3, CalendarClock, GraduationCap, KeyRound, Layers,
-  LayoutDashboard, Network, Upload, UserCheck, UserCircle, UserCog, Users,
+  LayoutDashboard, Network, Plug, Upload, UserCheck, UserCircle, UserCog, Users,
 } from 'lucide-react'
 
 export const ROLE_HOME = {
@@ -38,6 +38,7 @@ export const ROLE_MENU = {
     { to: '/admin/date-requests', label: 'Date Approvals', icon: CalendarClock },
     { to: '/admin/reports', label: 'Reports', icon: BarChart3 },
     { to: '/admin/uploads', label: 'Bulk Upload', icon: FileSpreadsheet },
+    { to: '/admin/portals', label: 'Portal Connections', icon: Plug },
     { to: '/admin/users', label: 'All Users', icon: Users },
   ],
   domain_lead: [
@@ -76,6 +77,11 @@ export const ROLE_MENU = {
     { to: '/student/reviews', label: 'Weekly Reviews', icon: ListChecks },
   ],
 }
+
+/** A domain lead is also a mentor: these entries are added to their menu (see user.is_mentor). */
+export const LEAD_MENTOR_MENU = [
+  { to: '/lead/proposals', label: 'Proposal Approvals', icon: FileCheck },
+]
 
 export const COMMON_MENU = [
   { to: '/notifications', label: 'Notifications', icon: Bell },

@@ -18,7 +18,7 @@ const fmtSize = (b) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Mat
 export default function SrsPanel({ projectId }) {
   const { user } = useAuth()
   const isStudent = user.role === 'student'
-  const canReview = user.role === 'mentor' || user.role === 'admin'
+  const canReview = user.role === 'mentor' || user.role === 'admin' || Boolean(user.is_mentor)
   const fileRef = useRef(null)
   const [data, setData] = useState(null)
   const [error, setError] = useState('')

@@ -6,7 +6,7 @@ from app.extensions import db
 from app.models import Domain, Role, User
 from app.permissions import current_user, roles_required
 from app.schemas.auth import user_to_dict
-from app.schemas.org import ActiveSchema, ResetPasswordAdminSchema, StaffCreateSchema, StaffCredentialsSchema
+from app.schemas.org import ActiveSchema, LeadDomainsSchema, ResetPasswordAdminSchema, StaffCreateSchema, StaffCredentialsSchema
 from app.services import user_service
 from app.utils.audit import audit
 from app.utils.errors import AppError
@@ -46,8 +46,26 @@ def create_user(data):
     user = user_service.create_staff_user(data["role"], data["name"], data["email"], password, data["phone"],
                                           data["domain_id"], data["designation"], data["expertise"],
                                           data["mentor_type"], data["company"], data["industry_sector"],
-                                          data["experience_years"], data["linkedin_url"], data["bio"])
+                                          data["experience_years"], data["linkedin_url"], data["bio"], data["domain_ids"])
     audit(current_user().id, "user.create", "user", user.id, {"role": data["role"]})
+    if data["role"] == "mentor" and data["domain_id"]:
+        # the domain's leads see the new mentor straight away (their Mentors page is scoped by domain) and are told
+        from app.services.notification_service import domain_lead_user_ids, notify
+        notify(domain_lead_user_ids(data["domain_id"]), "mentor_added", "New mentor in your domain",
+               f"{user.name} joined {db.session.get(Domain, data['domain_id']).name} as a mentor. You can assign them to your batches.",
+               "/lead/mentors")
+    if data["role"] == "domain_lead":
+        # a domain lead is also a mentor: they join the mentor list and the active batches of the domain(s) they lead
+        from app.models import Mentor
+        from app.services import domain_sync_service
+        domain_sync_service.auto_assign_mentor_to_batches(db.session.query(Mentor).filter_by(user_id=user.id).one(), current_user())
+    if data["role"] == "mentor" and data["domain_id"]:
+        # ... and the mentor is put on every active batch of that domain automatically
+        from app.models import Mentor
+        from app.services import domain_sync_service
+        mentor = db.session.query(Mentor).filter_by(user_id=user.id).one()
+        domain_sync_service.auto_assign_mentor_to_batches(mentor, current_user())
+        domain_sync_service.warn_admins_if_no_lead(data["domain_id"], f"Mentor {user.name}")
     db.session.commit()
     body = user_to_dict(user)
     if generated:
@@ -61,8 +79,9 @@ def create_user(data):
 @bp.arguments(StaffCredentialsSchema)
 @roles_required("admin")
 def issue_staff_credentials(data):
-    issued, skipped = user_service.issue_staff_credentials(data["role"], data["user_ids"])
-    audit(current_user().id, "staff.credentials_issued", "user", None, {"role": data["role"], "issued": len(issued), "skipped": len(skipped)})
+    issued, skipped = user_service.issue_staff_credentials(data["role"], data["user_ids"], data["include_active"])
+    audit(current_user().id, "staff.credentials_issued", "user", None, {"role": data["role"], "issued": len(issued), "skipped": len(skipped),
+                                                                              "include_active": data["include_active"]})
     db.session.commit()
     return ok({"credentials": issued, "skipped": skipped, "role": data["role"]}, f"{len(issued)} credential(s) issued")
 
@@ -81,6 +100,18 @@ def delete_user(user_id):
         db.session.rollback()
         raise AppError("This account is still referenced by other records. Deactivate it instead.", 409)
     return ok(message=f"{info['name']} was deleted")
+
+
+@bp.put("/users/<int:user_id>/domains")
+@bp.doc(security=SEC, description="Set the domain(s) a domain lead leads (replaces the current list). At least one is required.")
+@bp.arguments(LeadDomainsSchema)
+@roles_required("admin")
+def set_lead_domains(data, user_id):
+    user = user_service.get_user_or_404(user_id)
+    domains = user_service.set_lead_domains(user, data["domain_ids"])
+    audit(current_user().id, "user.set_domains", "user", user.id, {"domain_ids": [d.id for d in domains]})
+    db.session.commit()
+    return ok(user_to_dict(user), "Domains updated")
 
 
 @bp.post("/users/<int:user_id>/reset-password")

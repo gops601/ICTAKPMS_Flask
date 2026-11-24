@@ -53,6 +53,8 @@ def submit(project, file_storage, description, user):
     if user.role_name != "student" or not member:
         raise Forbidden("Only the project's students can submit the SRS")
     project = _lock(project.id)
+    if project.problem_statement.approval_status != "approved":
+        raise AppError("The SRS can only be started once a mentor has approved the problem statement.", 409)
     if project.stage not in SUBMITTABLE_STAGES:
         hint = {"allocated": "Start SRS preparation first.", "srs_submitted": "Your SRS is awaiting review.",
                 "srs_under_review": "Your SRS is being reviewed."}.get(project.stage, "The SRS is already approved.")

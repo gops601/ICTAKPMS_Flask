@@ -7,11 +7,27 @@ project page therefore can never disagree about a project's progress or whether 
 from datetime import date, timedelta
 
 from app.extensions import db
-from app.models import (EvaluationCriterion, EvaluationScore, ProjectGithubRepository, ProjectReview, ScrumBoard,
+from app.models import (Batch, EvaluationCriterion, EvaluationScore, ProjectGithubRepository, ProjectReview, ScrumBoard,
                         ScrumTask, SystemSetting)
 from app.services import lifecycle
 
-PROJECT_WEEKS = 4
+PROJECT_WEEKS = 4                       # online batches
+WEEKS_BY_MODE = {"online": 4, "offline": 3}
+WEEK_PHASES = {1: "SRS & datasets"}      # week 1 everywhere; every later week is implementation
+MODE_LABELS = {"online": "Online", "offline": "Offline"}
+
+
+def weeks_for(mode):
+    return WEEKS_BY_MODE.get(mode or "online", PROJECT_WEEKS)
+
+
+def project_weeks(project):
+    """Length of this project's plan: 4 weeks for an online batch, 3 for an offline one."""
+    return weeks_for(project.batch.mode if project.batch else None)
+
+
+def phase_for(week):
+    return WEEK_PHASES.get(week, "Implementation")
 DEFAULT_WEIGHTS = {"srs": 20, "github": 5, "scrum": 25, "reviews": 40, "final": 10}
 _APPROVED = lifecycle.ORDER["srs_approved"]
 
@@ -31,6 +47,7 @@ def project_metrics(projects, today=None):
     if not ids:
         return {}
     w = progress_weights()
+    modes = dict(db.session.query(Batch.id, Batch.mode).filter(Batch.id.in_({p.batch_id for p in projects})))   # one query for all
 
     reviews = {i: [] for i in ids}
     for pid, week, status, due in (db.session.query(ProjectReview.project_id, ProjectReview.week_no, ProjectReview.status,
@@ -77,7 +94,7 @@ def project_metrics(projects, today=None):
             done += w["github"]
         if t["total"]:
             done += w["scrum"] * t["completed"] / t["total"]
-        done += w["reviews"] * submitted / PROJECT_WEEKS
+        done += w["reviews"] * submitted / weeks_for(modes.get(p.batch_id))
         if p.stage == "completed" or p.final_signed_off_by:
             done += w["final"]
 

@@ -11,6 +11,7 @@ from app.permissions.scope import ensure_project_access, scoped_projects, studen
 from app.schemas.project import project_to_dict
 from app.services import evaluation_service as ev
 from app.services import lifecycle
+from app.services.metrics_service import project_weeks
 from app.utils.audit import audit
 from app.utils.errors import NotFound
 from app.utils.responses import ok
@@ -88,7 +89,11 @@ def _view(review):
         from app.services.review_schedule_service import pending_request, request_to_dict
         pending = pending_request(review.id)
         d["date_request"] = request_to_dict(pending) if pending else None
-        d["permissions"]["can_request_date_change"] = bool(d["permissions"]["can_edit"] and review.review_date and not pending)
+        project = db.session.get(Project, review.project_id)
+        # an assigned mentor can ask to move a scheduled date whenever the review is still open (not only while editing)
+        d["permissions"]["can_request_date_change"] = bool(
+            ev.is_assigned_mentor(user, project)
+            and review.status in ev.EDITABLE and review.review_date and not pending)
         d["permissions"]["can_decide_date_request"] = bool(pending and user.role_name in ("domain_lead", "admin"))
     return d
 
@@ -102,8 +107,8 @@ def project_reviews(project_id):
     project = _project_access(project_id)
     reviews = db.session.query(ProjectReview).filter_by(project_id=project.id).order_by(ProjectReview.week_no).all()
     signer = db.session.get(User, project.final_signed_off_by) if project.final_signed_off_by else None
-    all_in = all(r.status == "submitted" for r in reviews) and len(reviews) == 4
-    is_reviewer = user.role_name == "admin" or (user.role_name == "mentor" and ev.is_assigned_mentor(user, project))
+    all_in = all(r.status == "submitted" for r in reviews) and len(reviews) == project_weeks(project)
+    is_reviewer = user.role_name == "admin" or ev.is_assigned_mentor(user, project)
     return ok({
         "project": {"id": project.id, "title": project.title, "stage": project.stage, "stage_label": lifecycle.LABELS[project.stage]},
         "reviews": [_view(r) for r in reviews],

@@ -29,6 +29,15 @@ def login_required(fn):
     return wrapper
 
 
+def _lead_acting_as_mentor(user, roles):
+    """A domain lead is also a mentor (they have a mentor profile): mentor-only endpoints admit them. What they may do on a
+    given project is still decided by the per-project checks (they must be one of the project's mentors)."""
+    if user.role_name != "domain_lead" or "mentor" not in roles:
+        return False
+    from app.models import Mentor
+    return db.session.query(Mentor.id).filter_by(user_id=user.id).first() is not None
+
+
 def roles_required(*roles):
     """Backend role gate. Role is always re-read from the DB, never trusted from the token."""
     def decorator(fn):
@@ -36,7 +45,7 @@ def roles_required(*roles):
         def wrapper(*args, **kwargs):
             verify_jwt_in_request()
             user = load_current_user()
-            if user.role_name not in roles:
+            if user.role_name not in roles and not _lead_acting_as_mentor(user, roles):
                 raise Forbidden()
             return fn(*args, **kwargs)
         return wrapper

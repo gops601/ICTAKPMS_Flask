@@ -48,7 +48,7 @@ function TaskCard({ task, canMove, columns, onOpen, onDragStart, onDropOn, onMov
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
         <span>#{task.id}</span>
-        {task.assignee && <span>{task.assignee.name}</span>}
+        {(task.assignees?.length ? task.assignees : task.assignee ? [task.assignee] : []).length > 0 && <span>{(task.assignees?.length ? task.assignees : [task.assignee]).map((a) => a.name).join(', ')}</span>}
         {task.due_date && (
           <span className={`inline-flex items-center gap-1 ${task.is_overdue ? 'font-medium text-red-600' : ''}`}>
             <Calendar className="h-3 w-3" />{task.due_date}{task.is_overdue ? ' · overdue' : ''}

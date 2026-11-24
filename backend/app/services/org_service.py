@@ -42,6 +42,39 @@ def update_ou(ou, name=None, description=None):
     return ou
 
 
+def delete_ou(ou):
+    if db.session.query(Batch).filter_by(ou_id=ou.id).count():
+        raise AppError("This OU has batches. Deactivate it instead of deleting.", 409)
+    info = {"code": ou.code, "name": ou.name}
+    db.session.delete(ou)                    # its custom fields cascade
+    db.session.flush()
+    return info
+
+
+def delete_domain(domain):
+    from app.models import ProblemStatement
+    batches = db.session.query(Batch).filter_by(domain_id=domain.id).count()
+    shelf = db.session.query(ProblemStatement).filter_by(domain_id=domain.id).count()
+    if batches or shelf:
+        raise AppError(f"This domain has {batches} batch(es) and {shelf} Project Shelf entr{'y' if shelf == 1 else 'ies'}. "
+                       "Deactivate it instead of deleting.", 409)
+    info = {"code": domain.code, "name": domain.name}
+    db.session.delete(domain)                # leads and subdomains cascade
+    db.session.flush()
+    return info
+
+
+def delete_subdomain(sd):
+    from app.models import ProblemStatement
+    used = db.session.query(ProblemStatement).filter_by(subdomain_id=sd.id).count()
+    if used:
+        raise AppError(f"{used} Project Shelf entr{'y uses' if used == 1 else 'ies use'} this subdomain. Deactivate it instead.", 409)
+    info = {"name": sd.name, "domain_id": sd.domain_id}
+    db.session.delete(sd)
+    db.session.flush()
+    return info
+
+
 def get_ou(ou_id):
     ou = db.session.get(OrganisationalUnit, ou_id)
     if not ou:
@@ -182,6 +215,10 @@ def validate_batch_data(ou, data, existing=None):
     if not name:
         errors["name"] = "Batch name is required"
     clean.update(code=code, name=name[:150])
+    mode = str(data.get("mode") or "online").strip().lower()
+    if mode not in ("online", "offline"):
+        errors["mode"] = "Mode must be online (4 weeks) or offline (3 weeks)"
+    clean["mode"] = mode
 
     domain = None
     if data.get("domain_id"):
@@ -255,7 +292,7 @@ def create_batch(data):
 
 
 def build_batch(ou, clean):
-    batch = Batch(code=clean["code"], name=clean["name"], ou_id=ou.id, domain_id=clean["domain_id"],
+    batch = Batch(code=clean["code"], name=clean["name"], ou_id=ou.id, domain_id=clean["domain_id"], mode=clean.get("mode", "online"),
                   start_date=clean["start_date"], end_date=clean["end_date"])
     db.session.add(batch)
     db.session.flush()
@@ -267,7 +304,7 @@ def update_batch(batch, data):
     data = {k: v for k, v in data.items() if k != "code"}  # the generated batch ID never changes
     if data.get("ou_id") and data["ou_id"] != batch.ou_id:
         raise AppError("A batch's OU cannot be changed after creation", 422)
-    merged = {"code": batch.code, "name": batch.name, "domain_id": batch.domain_id,
+    merged = {"code": batch.code, "name": batch.name, "domain_id": batch.domain_id, "mode": batch.mode,
               "start_date": batch.start_date, "end_date": batch.end_date,
               "details": {d.field.field_key: d.value for d in batch.ou_details}}
     merged.update({k: v for k, v in data.items() if k in merged and k != "details"})
@@ -276,6 +313,11 @@ def update_batch(batch, data):
     clean, errors = validate_batch_data(batch.ou, merged, existing=batch)
     if errors:
         raise AppError("Validation failed", 422, errors)
+    if clean["mode"] != batch.mode:
+        from app.models import Project
+        if db.session.query(Project.id).filter_by(batch_id=batch.id).first():
+            raise AppError("The batch already has projects, so it cannot switch between online and offline (their review plan is fixed).", 409)
+        batch.mode = clean["mode"]
     batch.code, batch.name, batch.domain_id = clean["code"], clean["name"], clean["domain_id"]
     batch.start_date, batch.end_date = clean["start_date"], clean["end_date"]
     _apply_details(batch, batch.ou, clean["details"])

@@ -48,21 +48,31 @@ def _reviews_submitted(project):
 
 def _guard(project, to):
     """Business preconditions beyond the transition table. Returns an error message or None."""
-    if to == "final_evaluation" and _reviews_submitted(project) < 4:
-        return "All four weekly reviews must be submitted before the final evaluation"
+    if to == "srs_preparation" and project.problem_statement.approval_status != "approved":
+        return "The SRS can only be started once a mentor has approved the problem statement"
+    from app.services.metrics_service import project_weeks
+    n = project_weeks(project)
+    words = {3: "three", 4: "four"}.get(n, str(n))
+    if to == "final_evaluation" and _reviews_submitted(project) < n:
+        return f"All {words} weekly reviews must be submitted before the final evaluation"
     if to == "completed":
-        if _reviews_submitted(project) < 4:
-            return "All four weekly reviews must be submitted before completion"
+        if _reviews_submitted(project) < n:
+            return f"All {words} weekly reviews must be submitted before completion"
         if not project.final_signed_off_by:
             return "The mandatory final evaluation sign-off has not been completed"
     return None
 
 
-def available_actions(project, role):
+def _mentors_project(user, project):
+    from app.services.evaluation_service import is_assigned_mentor
+    return is_assigned_mentor(user, project)
+
+
+def available_actions(project, role, also_mentor=False):
     """Manual transitions this role could take from the current stage, with guard feedback."""
     out = []
     for to, (roles, system_only) in TRANSITIONS.get(project.stage, {}).items():
-        if system_only or role not in roles:
+        if system_only or (role not in roles and not (also_mentor and "mentor" in roles)):
             continue
         reason = _guard(project, to)
         out.append({"to": to, "label": LABELS[to], "enabled": reason is None, "reason": reason})
@@ -88,7 +98,7 @@ def transition(project, to, actor, reason=None, system=False):
     roles, system_only = allowed[to]
     if system_only and not system:
         raise AppError("This step happens automatically through the SRS workflow", 409)
-    if actor.role_name not in roles:
+    if actor.role_name not in roles and not (actor.role_name == "domain_lead" and "mentor" in roles and _mentors_project(actor, project)):
         raise Forbidden("Your role cannot perform this transition")
     msg = _guard(project, to)
     if msg:

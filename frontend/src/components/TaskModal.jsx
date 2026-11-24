@@ -19,7 +19,7 @@ export default function TaskModal({ projectId, taskId, members, permissions, onC
   const creating = !taskId
   const [task, setTask] = useState(null)
   const [tab, setTab] = useState('Details')
-  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', status: 'backlog', assigned_student_id: '', start_date: '', due_date: '' })
+  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', status: 'backlog', assigned_student_ids: [], start_date: '', due_date: '' })
   const [comment, setComment] = useState('')
   const [error, setError] = useState('')
   const [errs, setErrs] = useState({})
@@ -29,7 +29,7 @@ export default function TaskModal({ projectId, taskId, members, permissions, onC
   const fill = (t) => {
     setTask(t)
     setForm({ title: t.title, description: t.description || '', priority: t.priority, status: t.status,
-      assigned_student_id: t.assignee ? String(t.assignee.student_id) : '', start_date: t.start_date || '', due_date: t.due_date || '' })
+      assigned_student_ids: (t.assignees || (t.assignee ? [t.assignee] : [])).map((a) => a.student_id), start_date: t.start_date || '', due_date: t.due_date || '' })
   }
   useEffect(() => {
     if (!taskId) return
@@ -44,7 +44,7 @@ export default function TaskModal({ projectId, taskId, members, permissions, onC
     setBusy(true); setError(''); setErrs({})
     const body = {
       title: form.title, description: form.description, priority: form.priority,
-      assigned_student_id: form.assigned_student_id ? Number(form.assigned_student_id) : null,
+      assigned_student_ids: form.assigned_student_ids,
       start_date: form.start_date || null, due_date: form.due_date || null,
     }
     try {
@@ -95,9 +95,16 @@ export default function TaskModal({ projectId, taskId, members, permissions, onC
               <div><label htmlFor="t-pri" className="label">Priority</label>
                 <select id="t-pri" className="input" value={form.priority} onChange={set('priority')}>
                   {PRIORITIES.map((p) => <option key={p} value={p}>{p[0].toUpperCase() + p.slice(1)}</option>)}</select>{err('priority')}</div>
-              <div><label htmlFor="t-assignee" className="label">Assigned to</label>
-                <select id="t-assignee" className="input" value={form.assigned_student_id} onChange={set('assigned_student_id')}>
-                  <option value="">Unassigned</option>{members.map((m) => <option key={m.student_id} value={m.student_id}>{m.name}</option>)}</select>{err('assigned_student_id')}</div>
+              <fieldset className="sm:col-span-1"><legend className="label">Assigned to <span className="font-normal text-slate-500">(one or more)</span></legend>
+                <ul className="space-y-1" aria-label="Assignees">
+                  {members.map((m) => (
+                    <li key={m.student_id}><label className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={form.assigned_student_ids.includes(m.student_id)}
+                        onChange={() => setForm((f) => ({ ...f, assigned_student_ids: f.assigned_student_ids.includes(m.student_id) ? f.assigned_student_ids.filter((x) => x !== m.student_id) : [...f.assigned_student_ids, m.student_id] }))} />
+                      {m.name}</label></li>
+                  ))}
+                  {members.length === 0 && <li className="text-xs text-slate-500">No team members.</li>}
+                </ul>{err('assigned_student_ids')}</fieldset>
               {creating && (
                 <div><label htmlFor="t-status" className="label">Column</label>
                   <select id="t-status" className="input" value={form.status} onChange={set('status')}>

@@ -79,6 +79,16 @@ def update_domain(data, domain_id):
     return ok(domain_to_dict(d))
 
 
+@bp.delete("/<int:domain_id>")
+@bp.doc(security=SEC, description="Admin only. Refused (409) while the domain has batches or Project Shelf entries.")
+@roles_required("admin")
+def delete_domain(domain_id):
+    info = org_service.delete_domain(org_service.get_domain(domain_id))
+    audit(current_user().id, "domain.delete", "domain", domain_id, info)
+    db.session.commit()
+    return ok(message=f"Domain {info['code']} was deleted")
+
+
 @bp.patch("/<int:domain_id>/active")
 @bp.doc(security=SEC)
 @bp.arguments(ActiveSchema)
@@ -146,3 +156,17 @@ def update_subdomain(data, subdomain_id):
     audit(user.id, "subdomain.update", "domain", sd.domain_id, {"subdomain_id": sd.id})
     db.session.commit()
     return ok(subdomain_to_dict(sd))
+
+
+@bp.delete("/subdomains/<int:subdomain_id>")
+@bp.doc(security=SEC, description="Admins and the domain's leads. Refused (409) while Project Shelf entries use it.")
+@roles_required("admin", "domain_lead")
+def delete_subdomain(subdomain_id):
+    user = current_user()
+    sd = db.session.get(Subdomain, subdomain_id)
+    if not sd or not _visible(user, sd.domain_id):
+        raise NotFound("Subdomain not found")
+    info = org_service.delete_subdomain(sd)
+    audit(user.id, "subdomain.delete", "domain", info["domain_id"], info)
+    db.session.commit()
+    return ok(message=f"{info['name']} was deleted")
